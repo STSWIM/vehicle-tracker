@@ -47,6 +47,18 @@
             <value>NOTIFICATIONS</value>
             <value>TALK_BOT</value>
         </scopes>
+        <routes>
+            <route>
+                <url>^/ui(/.*)?$</url>
+                <verb>GET</verb>
+                <access_level>USER</access_level>
+            </route>
+            <route>
+                <url>^/api(/.*)?$</url>
+                <verb>GET,POST,DELETE</verb>
+                <access_level>USER</access_level>
+            </route>
+        </routes>
         <system>
             <min-cpu>1</min-cpu>
             <min-memory>512</min-memory>
