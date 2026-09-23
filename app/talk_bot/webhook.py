@@ -1,6 +1,13 @@
 """
 Webhook-Endpunkt fuer den Nextcloud-Talk-Bot.
 
+Laeuft als ExApp hinter AppAPI: eingehende Talk-Bot-Nachrichten kommen
+bereits durch die AppAPIAuthMiddleware validiert an (siehe main.py), die
+Nachricht selbst wird ueber nc_py_api.ex_app.atalk_bot_msg geparst - eine
+eigene HMAC-Signaturpruefung wie frueher in app/talk_bot/talk_api.py ist
+dafuer nicht mehr noetig. Antworten laufen ueber die zentrale Bot-Instanz
+in app/talk_bot/bot.py (registriert/verwaltet ihr Secret selbst über AppAPI).
+
 ACHTUNG / TODO vor dem produktiven Einsatz: das Herauslösen von Bild-
 Anhaengen aus dem Talk-Webhook-Payload ist der Teil, der laut Community-
 Berichten je nach Talk-Version noch nicht ganz rund laeuft (siehe
@@ -11,12 +18,14 @@ WhatsApp/Threema fuer den Foto-Versand der robustere Weg (s. README).
 """
 from __future__ import annotations
 
-import json
 import os
 import tempfile
+import typing
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends
+from nc_py_api.ex_app import atalk_bot_msg
+from nc_py_api.talk_bot import TalkBotMessage
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -25,20 +34,10 @@ from app.i18n import t
 from app.ocr.engine import run_ocr
 from app.ocr.parser import parse_beleg, parse_tacho
 from app.talk_bot import session as capture_session
-from app.talk_bot.talk_api import send_reply, verify_signature
+from app.talk_bot.bot import bot
 from app.validation import KilometerstandUnplausibelError, pruefe_verbrauch
 
 router = APIRouter(prefix="/talk-bot", tags=["talk-bot"])
-
-NEXTCLOUD_URL = os.environ.get("NEXTCLOUD_URL", "")
-
-
-def _get_header_any(request: Request, names: tuple[str, ...]) -> str | None:
-    for name in names:
-        value = request.headers.get(name)
-        if value:
-            return value
-    return None
 
 
 def _extract_attached_image_url(content: dict) -> str | None:
@@ -61,39 +60,28 @@ def _download_to_tempfile(url: str) -> str:
         return f.name
 
 
+async def _reply(message: TalkBotMessage, text: str) -> None:
+    await bot.send_message(text, reply_to_message=message.object_id, token=message.conversation_token)
+
+
 @router.post("/webhook")
-async def talk_webhook(request: Request):
-    from app.talk_bot.talk_api import (
-        RANDOM_HEADER_CANDIDATES,
-        SIGNATURE_HEADER_CANDIDATES,
-    )
-
-    body = await request.body()
-    random_value = _get_header_any(request, RANDOM_HEADER_CANDIDATES)
-    signature = _get_header_any(request, SIGNATURE_HEADER_CANDIDATES)
-
-    if not random_value or not signature or not verify_signature(random_value, signature, body):
-        raise HTTPException(status_code=401, detail="Signatur ungültig")
-
-    payload = json.loads(body)
-    if payload.get("type") != "Create":
+async def talk_webhook(message: typing.Annotated[TalkBotMessage, Depends(atalk_bot_msg)]):
+    if message.message_type != "Create":
         return {"status": "ignored"}
-
-    conversation_token = payload["target"]["id"]
-    raw_content = payload["object"].get("content", "{}")
-    content = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
-    message_text = (content.get("message") or "").strip()
 
     db: Session = SessionLocal()
     try:
-        await _handle_message(conversation_token, message_text, content, db)
+        await _handle_message(message, db)
     finally:
         db.close()
 
     return {"status": "ok"}
 
 
-async def _handle_message(token: str, text: str, content: dict, db: Session) -> None:
+async def _handle_message(message: TalkBotMessage, db: Session) -> None:
+    token = message.conversation_token
+    content = message.object_content
+    text = (content.get("message") or "").strip()
     session = capture_session.get_or_create_session(token)
 
     # 1) Fahrzeug-Zuordnung per Codewort, falls noch nicht gesetzt
@@ -104,32 +92,28 @@ async def _handle_message(token: str, text: str, content: dict, db: Session) -> 
             if session.is_complete:
                 # Fotos kamen bereits vor dem Codewort an - jetzt die
                 # Zusammenfassung nachreichen statt sie zu verschlucken.
-                send_reply(
-                    NEXTCLOUD_URL, token,
-                    capture_session.format_confirmation_message(session, vehicle),
-                )
+                await _reply(message, capture_session.format_confirmation_message(session, vehicle))
             else:
-                send_reply(
-                    NEXTCLOUD_URL, token,
-                    t("vehicle_selected", hersteller=vehicle.hersteller, modell=vehicle.modell),
+                await _reply(
+                    message, t("vehicle_selected", hersteller=vehicle.hersteller, modell=vehicle.modell)
                 )
             return
 
     # 2) Bestätigung eines vollständigen Vorschlags
     if session.is_complete and text.lower() in {"ja", "ok", "passt", "👍"}:
         if session.vehicle_id is None:
-            send_reply(NEXTCLOUD_URL, token, t("ask_codeword"))
+            await _reply(message, t("ask_codeword"))
             return
 
         fehlend = capture_session.fehlende_pflichtfelder(session)
         if fehlend:
-            send_reply(NEXTCLOUD_URL, token, t("missing_fields", felder=", ".join(fehlend)))
+            await _reply(message, t("missing_fields", felder=", ".join(fehlend)))
             return
 
         try:
             capture_session.pruefe_kilometerstand_fuer_session(db, session)
         except KilometerstandUnplausibelError as exc:
-            send_reply(NEXTCLOUD_URL, token, t("kilometerstand_unplausibel", fehler=str(exc)))
+            await _reply(message, t("kilometerstand_unplausibel", fehler=str(exc)))
             return
 
         entry = capture_session.build_fuel_entry(session)
@@ -141,7 +125,7 @@ async def _handle_message(token: str, text: str, content: dict, db: Session) -> 
         nachricht = t("entry_saved")
         if warnungen:
             nachricht += "\n⚠️ " + " / ".join(warnungen)
-        send_reply(NEXTCLOUD_URL, token, nachricht)
+        await _reply(message, nachricht)
         return
 
     # 3) Foto-Anhang verarbeiten
@@ -158,14 +142,14 @@ async def _handle_message(token: str, text: str, content: dict, db: Session) -> 
             # werden.
             if session.tacho is None:
                 session.tacho = parse_tacho(ocr_result)
-                send_reply(NEXTCLOUD_URL, token, t("tacho_recognized"))
+                await _reply(message, t("tacho_recognized"))
             elif session.beleg is None:
                 session.beleg = parse_beleg(ocr_result)
                 gps = extract_gps_from_photo(local_path)
                 if gps:
                     session.beleg.tankstelle_name = reverse_geocode(*gps)
         except Exception:
-            send_reply(NEXTCLOUD_URL, token, t("photo_processing_failed"))
+            await _reply(message, t("photo_processing_failed"))
             return
         finally:
             if local_path and os.path.exists(local_path):
@@ -175,11 +159,9 @@ async def _handle_message(token: str, text: str, content: dict, db: Session) -> 
             from app.models import Vehicle
 
             vehicle = db.get(Vehicle, session.vehicle_id)
-            send_reply(
-                NEXTCLOUD_URL, token, capture_session.format_confirmation_message(session, vehicle)
-            )
+            await _reply(message, capture_session.format_confirmation_message(session, vehicle))
         return
 
     # 4) Sonst: kurze Hilfe
     if text:
-        send_reply(NEXTCLOUD_URL, token, t("help_text"))
+        await _reply(message, t("help_text"))

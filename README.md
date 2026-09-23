@@ -85,8 +85,9 @@ Läuft auch automatisch per GitHub Actions bei jedem Push/PR
    (ggf. private) Registry pushen, `appinfo/info.xml` mit den echten
    Image-Angaben aktualisieren, dann über `occ app_api:daemon:register`
    (docker-install) + `occ app_api:app:register` registrieren.
-4. Talk-Bot registrieren und `TALK_BOT_SECRET` setzen (Details siehe
-   `docs/ARCHITECTURE.md`, Abschnitt "Talk-Bot einrichten").
+4. Talk-Bot in der gewünschten Unterhaltung hinzufügen (registriert sich
+   selbst automatisch beim Aktivieren, Details siehe `docs/ARCHITECTURE.md`,
+   Abschnitt "Talk-Bot einrichten").
 
 ## Projektstruktur
 

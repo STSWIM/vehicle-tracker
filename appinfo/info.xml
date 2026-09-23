@@ -59,12 +59,6 @@
                 <default>false</default>
             </variable>
             <variable>
-                <name>TALK_BOT_SECRET</name>
-                <display-name>Talk-Bot Secret</display-name>
-                <description>HMAC-Secret zur Signaturpruefung des Nextcloud-Talk-Webhooks (siehe app/talk_bot/talk_api.py). Unbedingt beim Deployment individuell ueberschreiben.</description>
-                <default>changeme</default>
-            </variable>
-            <variable>
                 <name>APP_LOCALE</name>
                 <display-name>Sprache</display-name>
                 <description>Sprache der Talk-Bot-/Chat-Nachrichten (siehe app/i18n.py, aktuell nur "de" hinterlegt).</description>

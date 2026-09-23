@@ -93,14 +93,18 @@ optional wiederkehrend).
 
 ## Talk-Bot einrichten (Kurzfassung)
 
-1. Bot-Nutzer über `occ talk:bot:install` (bzw. das Äquivalent für ExApps
-   über die AppAPI-Scopes, siehe `appinfo/info.xml` → `TALK_BOT`)
-   registrieren und einer Unterhaltung hinzufügen.
-2. Geheimnis (Secret) notieren und als `TALK_BOT_SECRET` in `.env` setzen.
-3. Webhook-URL auf `https://<app-host>/talk-bot/webhook` zeigen lassen.
-4. Fahrzeug in der DB mit `bot_codewort` anlegen (siehe
+Der Bot registriert sich seit der Umstellung auf `nc_py_api.talk_bot.AsyncTalkBot`
+(siehe `app/talk_bot/bot.py`) automatisch selbst bei AppAPI, sobald die
+ExApp aktiviert wird - AppAPI generiert dabei sein Secret selbst, es muss
+nichts mehr manuell in `.env`/`TALK_BOT_SECRET` gepflegt werden.
+
+1. ExApp in Nextcloud aktivieren (`occ app_api:app:register` bzw. über die
+   Verwaltungsoberfläche) - der Bot meldet sich dabei automatisch an.
+2. Bot in der gewünschten Talk-Unterhaltung hinzufügen (Konversation →
+   Unterhaltungseinstellungen → Bots).
+3. Fahrzeug in der DB mit `bot_codewort` anlegen (siehe
    `migrations/init_db.py` für ein Beispiel).
-5. Im Talk-Chat: Codewort schicken → Tacho-Foto → Beleg-Foto → Vorschlag
+4. Im Talk-Chat: Codewort schicken → Tacho-Foto → Beleg-Foto → Vorschlag
    im Chat mit "ja" bestätigen.
 
 Vor Schritt 1 unbedingt die aktuelle AppAPI-/Talk-Dokumentation prüfen, da

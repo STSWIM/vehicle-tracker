@@ -62,8 +62,10 @@ if STANDALONE_MODE:
 
 else:
     # Echter AppAPI-ExApp-Modus.
-    from nc_py_api import NextcloudApp
+    from nc_py_api import AsyncNextcloudApp
     from nc_py_api.ex_app import AppAPIAuthMiddleware, LogLvl, run_app, set_handlers
+
+    from app.talk_bot.bot import handle_enabled as handle_talk_bot_enabled  # noqa: E402
 
     @asynccontextmanager
     async def lifespan(fastapi_app: FastAPI):
@@ -75,7 +77,8 @@ else:
     app.add_middleware(AppAPIAuthMiddleware)
     _mount_routers(app)
 
-    async def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
+    async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
+        await handle_talk_bot_enabled(enabled, nc)
         if enabled:
             await nc.log(LogLvl.INFO, "vehicle_tracker aktiviert.")
         return ""
