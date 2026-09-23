@@ -63,6 +63,11 @@
                 <verb>GET</verb>
                 <access_level>PUBLIC</access_level>
             </route>
+            <route>
+                <url>^/js(/.*)?$</url>
+                <verb>GET</verb>
+                <access_level>PUBLIC</access_level>
+            </route>
         </routes>
         <system>
             <min-cpu>1</min-cpu>

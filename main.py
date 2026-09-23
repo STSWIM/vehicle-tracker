@@ -81,8 +81,10 @@ else:
         await handle_talk_bot_enabled(enabled, nc)
         if enabled:
             await nc.ui.top_menu.register("ui", "Fahrzeug Buchführung", icon="img/icon.svg")
+            await nc.ui.resources.set_script("top_menu", "ui", "js/app.js")
             await nc.log(LogLvl.INFO, "vehicle_tracker aktiviert.")
         else:
+            await nc.ui.resources.delete_script("top_menu", "ui", "js/app.js")
             await nc.ui.top_menu.unregister("ui")
         return ""
 
