@@ -30,17 +30,15 @@
     <author>Michael Witt</author>
     <namespace>VehicleTracker</namespace>
     <category>tools</category>
-    <!-- TODO: nach dem Anlegen des GitHub-Repos hier die echte Repo-/Issues-URL
-         eintragen, z.B. https://github.com/<user>/vehicle-tracker -->
-    <website>https://witt14.de</website>
-    <bugs>https://witt14.de</bugs>
+    <website>https://github.com/STSWIM/vehicle-tracker</website>
+    <bugs>https://github.com/STSWIM/vehicle-tracker/issues</bugs>
     <dependencies>
         <nextcloud min-version="28" max-version="35"/>
     </dependencies>
 
     <external-app>
         <docker-install>
-            <registry>ghcr.io/witt14</registry>
+            <registry>ghcr.io/stswim</registry>
             <image>vehicle-tracker</image>
             <image-tag>0.1.0</image-tag>
         </docker-install>
