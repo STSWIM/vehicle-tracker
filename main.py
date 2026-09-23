@@ -80,7 +80,10 @@ else:
     async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
         await handle_talk_bot_enabled(enabled, nc)
         if enabled:
+            await nc.ui.top_menu.register("ui", "Fahrzeug Buchführung", icon="img/icon.svg")
             await nc.log(LogLvl.INFO, "vehicle_tracker aktiviert.")
+        else:
+            await nc.ui.top_menu.unregister("ui")
         return ""
 
     if __name__ == "__main__":
