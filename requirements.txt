@@ -1,0 +1,10 @@
+# Vollstaendige Installation fuer den echten Betrieb (Core + OCR-Engine).
+# Fuer schnelle lokale Entwicklung/Tests ohne OCR-Funktionalitaet reicht
+# "pip install -r requirements-core.txt" bzw. "-r requirements-dev.txt".
+-r requirements-core.txt
+-r requirements-ocr.txt
+
+# --- optionaler lokaler LLM-Fallback fuer unklare Belege ---
+# (siehe app/ocr/llm_fallback.py – standardmaessig deaktiviert,
+#  benoetigt z.B. einen lokalen Ollama-Server, keine zusaetzlichen
+#  Pakete noetig, da nur ueber HTTP/httpx angesprochen)

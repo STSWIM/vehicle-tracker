@@ -1,0 +1,8 @@
+# Fuer Tests/CI: Core-Abhaengigkeiten + pytest, bewusst OHNE die schwere
+# OCR-Engine (siehe requirements-core.txt) - die Tests rufen run_ocr()
+# nicht auf, PaddleOCR wird nur lazy importiert, wenn es tatsaechlich
+# gebraucht wird.
+-r requirements-core.txt
+
+pytest>=8.0
+httpx>=0.27

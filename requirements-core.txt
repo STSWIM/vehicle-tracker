@@ -1,0 +1,21 @@
+# Alles, was die App zum Laufen braucht, AUSSER der schweren OCR-Engine
+# (paddlepaddle/paddleocr, siehe requirements-ocr.txt) - so bleibt der
+# CI- und lokale Dev-Loop schnell, auch ohne die ~200 MB+ groessen
+# OCR-Pakete zu installieren. app/ocr/engine.py importiert paddleocr
+# ohnehin erst lazy beim ersten tatsaechlichen OCR-Aufruf.
+
+# --- ExApp-Framework ---
+nc-py-api>=0.14.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+python-dotenv>=1.0
+
+# --- Datenhaltung ---
+sqlalchemy>=2.0
+pydantic>=2.6
+
+# --- Bildverarbeitung ohne die eigentliche OCR-Engine ---
+pillow>=10.0
+piexif>=1.1.3          # EXIF/GPS-Auslesung aus Fotos

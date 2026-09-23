@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!--
+  ExApp-Manifest für die Nextcloud AppAPI.
+
+  Hinweis: Das exakte Schema für den <external-app>-Block entwickelt sich mit
+  der AppAPI weiter. Vor dem ersten Deployment unbedingt gegenprüfen:
+  https://nextcloud.github.io/app_api/notes_for_developers/ExAppOverview.html
+  https://docs.nextcloud.com/server/stable/developer_manual/exapp_development/tech_details/Deployment.html
+
+  Für die lokale Entwicklung braucht es diese Datei zunächst nicht zwingend,
+  siehe scripts/register_dev.sh für die Registrierung über einen
+  manual-install Deploy-Daemon. Für den produktiven Betrieb wird daraus
+  dann das echte Docker-Image gebaut und über einen docker-install
+  Daemon registriert.
+-->
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>vehicle_tracker</id>
+    <name>Fahrzeug Buchführung</name>
+    <summary>Kraftstoffkosten, Unterhaltskosten und Belegerfassung per Foto für mehrere Fahrzeuge</summary>
+    <description>
+      Ersetzt die Excel-basierte Fahrzeug-Buchführung: Tank-Log (LPG/Benzin),
+      Sonstige Kosten (Versicherung, Steuer, Service, Reifen, ...), automatische
+      Verbrauchs- und Kostenstatistiken, Kartenansicht der Tankstellen sowie
+      Belegerfassung per Foto über einen Nextcloud-Talk-Bot mit lokaler
+      OCR-Auswertung.
+    </description>
+    <version>0.1.0</version>
+    <licence>agpl</licence>
+    <author>Michael Witt</author>
+    <namespace>VehicleTracker</namespace>
+    <category>tools</category>
+    <!-- TODO: nach dem Anlegen des GitHub-Repos hier die echte Repo-/Issues-URL
+         eintragen, z.B. https://github.com/<user>/vehicle-tracker -->
+    <website>https://witt14.de</website>
+    <bugs>https://witt14.de</bugs>
+    <dependencies>
+        <nextcloud min-version="28" max-version="35"/>
+    </dependencies>
+
+    <external-app>
+        <docker-install>
+            <registry>ghcr.io/witt14</registry>
+            <image>vehicle-tracker</image>
+            <image-tag>0.1.0</image-tag>
+        </docker-install>
+        <scopes>
+            <value>FILES</value>
+            <value>NOTIFICATIONS</value>
+            <value>TALK_BOT</value>
+        </scopes>
+        <system>
+            <min-cpu>1</min-cpu>
+            <min-memory>512</min-memory>
+        </system>
+    </external-app>
+</info>

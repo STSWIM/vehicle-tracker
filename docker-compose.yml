@@ -1,0 +1,34 @@
+# Compose-Datei fuer die LOKALE Entwicklung der ExApp, unabhaengig von einer
+# echten Nextcloud-Instanz (Standalone-Modus fuer main.py, siehe README).
+# Fuer den echten Betrieb auf witt14.de wird die App stattdessen ueber
+# "occ app_api:app:register" bei einem Docker-Deploy-Daemon registriert –
+# siehe docs/ARCHITECTURE.md, Abschnitt "Deployment".
+
+services:
+  vehicle-tracker:
+    build: .
+    container_name: vehicle_tracker_dev
+    environment:
+      - STANDALONE_MODE=true
+      - DATABASE_URL=sqlite:////data/vehicle_tracker.db
+      - OCR_ENGINE=paddleocr
+      - OCR_LANG=de
+      - LLM_FALLBACK_ENABLED=false
+      # nur relevant, falls LLM_FALLBACK_ENABLED=true und z.B. Ollama genutzt wird
+      - LLM_FALLBACK_URL=http://ollama:11434
+    volumes:
+      - ./data:/data
+      - ./photos:/photos
+    ports:
+      - "23000:23000"
+
+  # Optional: lokales Ollama fuer den LLM-Fallback bei mehrdeutigen Belegen.
+  # Standardmaessig auskommentiert, da auf CPU-only-Hardware erstmal die
+  # regelbasierte Auswertung (app/ocr/parser.py) reichen sollte.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: vehicle_tracker_ollama
+  #   volumes:
+  #     - ./ollama-data:/root/.ollama
+  #   ports:
+  #     - "11434:11434"

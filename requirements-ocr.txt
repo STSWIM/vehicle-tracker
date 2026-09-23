@@ -1,0 +1,5 @@
+# OCR-Engine (CPU). Getrennt von requirements-core.txt, weil paddlepaddle
+# allein schon >100 MB ist und die Installation je nach Server-Architektur
+# (x86_64 vs. ARM) unterschiedlich verlaufen kann - siehe README.
+paddlepaddle==2.6.*
+paddleocr>=2.7,<3.0
