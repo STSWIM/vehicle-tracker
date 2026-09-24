@@ -51,6 +51,8 @@
     #vehicle-tracker-root details.manual-entry label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
     #vehicle-tracker-root details.manual-entry input[type="date"] { min-width: 11em; }
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
+    #vehicle-tracker-root .form-hint { flex-basis: 100%; font-size: 0.8rem; opacity: 0.7; }
+    #vehicle-tracker-root input.vt-computed { font-style: italic; }
     #vehicle-tracker-root .form-status.error { color: var(--color-error, #b3261e); }
     #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
     #vehicle-tracker-root .form-status.success { color: var(--color-success, #1a7f37); }
@@ -75,6 +77,7 @@
           <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
           <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
           <label>Kaufdatum <input type="date" name="kaufdatum"></label>
+          <label>km-Stand bei Kauf <input type="number" name="kaufkilometerstand" min="0"></label>
           <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
           <button type="submit">Anlegen</button>
           <div class="form-status" id="vt-vehicle-status"></div>
@@ -100,6 +103,7 @@
           <label>Tankstelle <input type="text" name="tankstelle_name"></label>
           <label><input type="checkbox" name="nicht_voll"> nicht vollgetankt</label>
           <button type="submit">Speichern</button>
+          <div class="form-hint">Zwei von Menge, Preis/l und Gesamtpreis eingeben – der dritte Wert wird berechnet (kursiv).</div>
           <div class="form-status" id="vt-fuel-entry-status"></div>
         </form>
       </details>
@@ -242,6 +246,47 @@
         loadVehicles(saved.id);
       }
     });
+
+    // Aus zwei der drei Werte Menge/Preis/Gesamt wird der dritte berechnet.
+    // Berechnet wird immer das Feld, das der Nutzer nicht unter den zuletzt
+    // zwei selbst bearbeiteten Feldern hat - so laesst sich jedes Feld
+    // wieder ueberschreiben.
+    function setupFuelAutoCalc(form) {
+      const fields = ['fuellmenge_liter', 'preis_pro_liter', 'gesamtpreis'];
+      const decimals = { fuellmenge_liter: 2, preis_pro_liter: 3, gesamtpreis: 2 };
+      let touched = []; // selbst bearbeitete Felder, zuletzt bearbeitetes am Ende
+      const num = (name) => parseFloat(form.elements[name].value);
+
+      function compute(target) {
+        const menge = num('fuellmenge_liter');
+        const preis = num('preis_pro_liter');
+        const gesamt = num('gesamtpreis');
+        let result = NaN;
+        if (target === 'gesamtpreis') result = menge * preis;
+        else if (target === 'preis_pro_liter' && menge > 0) result = gesamt / menge;
+        else if (target === 'fuellmenge_liter' && preis > 0) result = gesamt / preis;
+        const input = form.elements[target];
+        if (Number.isFinite(result)) {
+          input.value = result.toFixed(decimals[target]);
+          input.classList.add('vt-computed');
+        }
+      }
+
+      fields.forEach((name) => {
+        form.elements[name].addEventListener('input', () => {
+          form.elements[name].classList.remove('vt-computed');
+          touched = touched.filter((f) => f !== name);
+          if (form.elements[name].value !== '') touched.push(name);
+          const sources = touched.slice(-2);
+          if (sources.length === 2) compute(fields.find((f) => !sources.includes(f)));
+        });
+      });
+      form.addEventListener('reset', () => {
+        touched = [];
+        fields.forEach((f) => form.elements[f].classList.remove('vt-computed'));
+      });
+    }
+    setupFuelAutoCalc(document.getElementById('vt-fuel-entry-form'));
 
     document.getElementById('vt-fuel-entry-form').addEventListener('submit', async (ev) => {
       ev.preventDefault();

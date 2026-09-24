@@ -56,6 +56,20 @@ def test_kilometerstand_darf_nicht_ueber_spaeter_erfasstem_stand_liegen(client):
     assert "20000" in response.text
 
 
+def test_kilometerstand_darf_nicht_unter_kaufkilometerstand_liegen(client):
+    response = client.post(
+        "/api/vehicles",
+        json={"kennzeichen": "RT-WI 98", "hersteller": "Toyota", "modell": "Previa", "kaufkilometerstand": 150_000},
+    )
+    assert response.status_code == 201, response.text
+    vehicle_id = response.json()["id"]
+
+    response = _post_entry(client, vehicle_id, "2024-01-01", 149_000)
+    assert response.status_code == 400
+    assert "150000" in response.text
+    assert _post_entry(client, vehicle_id, "2024-01-01", 150_500).status_code == 201
+
+
 def test_verbrauch_ausreisser_wird_als_warnung_gemeldet(client):
     vehicle_id = _seed_vehicle(client)
     # Baseline: ca. 6 l/100km ueber mehrere Volltankungen.

@@ -76,6 +76,7 @@ class Vehicle(Base):
 
     kaufdatum: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     kaufpreis: Mapped[float | None] = mapped_column(Float, nullable=True)
+    kaufkilometerstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
     verkauft_am: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
 
     # Zuordnung fuer den Talk-Bot: z.B. Codewort "previa" oder feste Raum-ID,

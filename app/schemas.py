@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import ErinnerungsTyp, Kostenkategorie, Kraftstoffart, Quelle
 
@@ -17,6 +17,7 @@ class VehicleCreate(BaseModel):
     tankvolumen_benzin_l: float | None = None
     kaufdatum: datetime.date | None = None
     kaufpreis: float | None = None
+    kaufkilometerstand: int | None = Field(default=None, ge=0)
     bot_codewort: str | None = None
 
 

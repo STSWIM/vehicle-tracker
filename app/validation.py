@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.consumption import verbrauch_l_pro_100km
-from app.models import FuelEntry
+from app.models import FuelEntry, Vehicle
 
 # Erfahrungswerte als Ausweichgrenze, solange fuer das Fahrzeug noch kein
 # eigener Verbrauchsschnitt vorliegt (erste Volltankungen).
@@ -37,6 +37,13 @@ def pruefe_kilometerstand(
     *,
     exclude_entry_id: int | None = None,
 ) -> None:
+    vehicle = db.get(Vehicle, vehicle_id)
+    if vehicle is not None and vehicle.kaufkilometerstand is not None and kilometerstand < vehicle.kaufkilometerstand:
+        raise KilometerstandUnplausibelError(
+            f"Kilometerstand {kilometerstand} km liegt unter dem Kilometerstand "
+            f"beim Kauf ({vehicle.kaufkilometerstand} km)."
+        )
+
     q_vorherige = select(func.max(FuelEntry.kilometerstand)).where(
         FuelEntry.vehicle_id == vehicle_id, FuelEntry.datum <= datum
     )
