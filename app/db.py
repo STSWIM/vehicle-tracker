@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Base
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/vehicle_tracker.db")
+def _default_database_url() -> str:
+    # AppAPI mountet unter APP_PERSISTENT_STORAGE ein Volume, das Redeploys
+    # ueberlebt - ohne das waeren alle Daten bei jedem Container-Neustart weg.
+    storage = os.environ.get("APP_PERSISTENT_STORAGE")
+    if storage:
+        return f"sqlite:///{storage}/vehicle_tracker.db"
+    return "sqlite:///./data/vehicle_tracker.db"
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL") or _default_database_url()
 
 # SQLite legt die DB-Datei nicht selbststaendig in einem noch fehlenden
 # Ordner an ("unable to open database file") - Zielordner daher vorab

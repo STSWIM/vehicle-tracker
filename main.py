@@ -54,6 +54,9 @@ if STANDALONE_MODE:
 
     app = FastAPI(title="Fahrzeug Buchführung (Standalone-Dev-Modus)", lifespan=_standalone_lifespan)
     _mount_routers(app)
+    # Im ExApp-Modus mountet nc_py_api.set_handlers js/ und img/ automatisch.
+    app.mount("/js", StaticFiles(directory="js"), name="js")
+    app.mount("/img", StaticFiles(directory="img"), name="img")
 
     if __name__ == "__main__":
         import uvicorn

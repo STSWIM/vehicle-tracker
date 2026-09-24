@@ -1,46 +1,84 @@
 /*
- * Top-Menu-Einbettung fuer die ExApp (Nextcloud AppAPI "embedded"-Ansicht,
- * siehe app_api/templates/embedded.php: liefert nur ein leeres
- * <div id="content">, in das dieses Skript die Oberflaeche rendert).
+ * Oberflaeche der Fahrzeug-Buchfuehrung. Rendert in ein vorhandenes
+ * <div id="content"> - das liefert sowohl die AppAPI-"embedded"-Ansicht
+ * (Top-Menue, app_api/templates/embedded.php) als auch frontend/static/index.html.
  *
- * Anders als frontend/static/index.html (eigene, unabhaengige Seite unter
- * /exapps/vehicle_tracker/ui/) laeuft dieses Skript im Kontext der
- * Nextcloud-Seite selbst - relative fetch()-Aufrufe wuerden daher gegen
- * die Nextcloud-Domain statt gegen unsere ExApp gehen. Deshalb immer mit
- * API_BASE (absoluter ExApp-Pfad) arbeiten.
+ * Der API-Pfad wird aus der URL dieses Skripts abgeleitet, weil es je nach
+ * Einbindung unter verschiedenen Praefixen liegt:
+ *   /index.php/apps/app_api/proxy/vehicle_tracker/js/app.js  (Top-Menue)
+ *   /exapps/vehicle_tracker/js/app.js                        (/ui/ ueber HaRP)
+ *   /js/app.js                                               (Standalone-Dev-Modus)
  */
 (function () {
-  const API_BASE = '/exapps/vehicle_tracker';
+  function findScriptUrl() {
+    if (document.currentScript && document.currentScript.src) {
+      return document.currentScript.src;
+    }
+    // Nextcloud laedt Skripte teils als ES-Module, dort ist currentScript null.
+    const match = Array.from(document.scripts)
+      .map((s) => s.src)
+      .find((src) => /\/js\/app\.js(\?|$)/.test(src));
+    return match || window.location.href;
+  }
+
+  const BASE = new URL('..', findScriptUrl()).pathname.replace(/\/$/, '');
+
+  const esc = (value) =>
+    String(value ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
 
   const STYLE = `
-    #vehicle-tracker-root { font-family: system-ui, sans-serif; }
-    #vehicle-tracker-root header { padding: 0.75rem 0; }
-    #vehicle-tracker-root #map { height: 320px; margin-top: 0.75rem; }
-    #vehicle-tracker-root table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
-    #vehicle-tracker-root #stats { padding: 0.75rem 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
-    #vehicle-tracker-root .stat { background: #f5f5f5; border-radius: 8px; padding: 0.5rem 0.9rem; }
+    #vehicle-tracker-root {
+      font-family: var(--font-face, system-ui, sans-serif);
+      color: var(--color-main-text, #222);
+      background: var(--color-main-background, #fff);
+      border-radius: var(--border-radius-large, 10px);
+      margin: 0.75rem;
+      padding: 0.75rem 1.25rem 1.25rem;
+    }
+    #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; }
+    #vehicle-tracker-root #vt-map { height: 320px; margin-top: 0.75rem; border-radius: 8px; }
+    #vehicle-tracker-root table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
+    #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border, #eee); }
+    #vehicle-tracker-root #vt-stats { padding: 0.75rem 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    #vehicle-tracker-root .stat { background: var(--color-background-dark, #f5f5f5); border-radius: 8px; padding: 0.5rem 0.9rem; }
     #vehicle-tracker-root .stat b { display: block; font-size: 1.1rem; }
-    #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid #ddd; border-radius: 8px; }
+    #vehicle-tracker-root .hint { padding: 0.75rem 0; opacity: 0.8; }
+    #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; }
     #vehicle-tracker-root details.manual-entry summary { padding: 0.5rem 0.9rem; cursor: pointer; font-weight: 600; }
     #vehicle-tracker-root details.manual-entry form { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0 0.9rem 0.9rem; align-items: flex-end; }
     #vehicle-tracker-root details.manual-entry label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
-    #vehicle-tracker-root details.manual-entry input, #vehicle-tracker-root details.manual-entry select { padding: 0.3rem; }
-    #vehicle-tracker-root details.manual-entry button { padding: 0.4rem 0.9rem; }
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
-    #vehicle-tracker-root .form-status.error { color: #b3261e; }
-    #vehicle-tracker-root .form-status.warning { color: #9a6700; }
-    #vehicle-tracker-root .form-status.success { color: #1a7f37; }
+    #vehicle-tracker-root .form-status.error { color: var(--color-error, #b3261e); }
+    #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
+    #vehicle-tracker-root .form-status.success { color: var(--color-success, #1a7f37); }
   `;
 
   const MARKUP = `
     <div id="vehicle-tracker-root">
       <header>
-        <label for="vt-vehicle-select">Fahrzeug: </label>
+        <label for="vt-vehicle-select">Fahrzeug:</label>
         <select id="vt-vehicle-select"></select>
       </header>
 
-      <div id="stats"></div>
+      <div id="vt-stats"></div>
+
+      <details class="manual-entry" id="vt-vehicle-details">
+        <summary>Fahrzeug anlegen</summary>
+        <form id="vt-vehicle-form">
+          <label>Kennzeichen <input type="text" name="kennzeichen" required></label>
+          <label>Hersteller <input type="text" name="hersteller" required></label>
+          <label>Modell <input type="text" name="modell" required></label>
+          <label>Variante <input type="text" name="variante"></label>
+          <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
+          <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
+          <label>Kaufdatum <input type="date" name="kaufdatum"></label>
+          <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
+          <button type="submit">Anlegen</button>
+          <div class="form-status" id="vt-vehicle-status"></div>
+        </form>
+      </details>
 
       <details class="manual-entry">
         <summary>Tankbeleg manuell erfassen</summary>
@@ -59,7 +97,7 @@
           <label>Preis/l (€) <input type="number" name="preis_pro_liter" step="0.001" min="0" required></label>
           <label>Gesamtpreis (€) <input type="number" name="gesamtpreis" step="0.01" min="0" required></label>
           <label>Tankstelle <input type="text" name="tankstelle_name"></label>
-          <label><input type="checkbox" name="nicht_voll"> nicht volltgetankt</label>
+          <label><input type="checkbox" name="nicht_voll"> nicht vollgetankt</label>
           <button type="submit">Speichern</button>
           <div class="form-status" id="vt-fuel-entry-status"></div>
         </form>
@@ -90,7 +128,7 @@
         </form>
       </details>
 
-      <div id="map"></div>
+      <div id="vt-map"></div>
       <table id="vt-entries">
         <thead>
           <tr><th>Datum</th><th>km</th><th>Kraftstoff</th><th>Menge</th><th>Preis/l</th><th>Gesamt</th></tr>
@@ -124,24 +162,27 @@
     const styleTag = document.createElement('style');
     styleTag.textContent = STYLE;
     document.head.appendChild(styleTag);
-
     content.innerHTML = MARKUP;
 
-    // Karte ist optional: die CSP der eingebetteten Nextcloud-Seite erlaubt
-    // keine Skripte von fremden Hosts (Leaflet-CDN). Scheitert das Laden,
-    // bleibt der Rest der Oberflaeche trotzdem nutzbar.
+    // Leaflet wird mitgeliefert statt vom CDN geladen: die CSP der
+    // Nextcloud-Seite erlaubt keine Stylesheets/Skripte von fremden Hosts.
+    // Scheitert die Karte trotzdem, bleibt der Rest nutzbar.
     let map = null;
     try {
       if (!window.L) {
-        loadStylesheet('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+        loadStylesheet(`${BASE}/js/vendor/leaflet/leaflet.css`);
+        await loadScript(`${BASE}/js/vendor/leaflet/leaflet.js`);
       }
-      map = L.map('map').setView([51.1657, 10.4515], 6); // Deutschland-Mitte als Default
+      map = L.map('vt-map').setView([51.1657, 10.4515], 6); // Deutschland-Mitte als Default
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap-Mitwirkende',
+        // Nextcloud/nginx senden "Referrer-Policy: no-referrer", die
+        // OSM-Kachelserver verlangen aber einen Referer.
+        referrerPolicy: 'strict-origin-when-cross-origin',
       }).addTo(map);
     } catch (e) {
-      document.getElementById('map').remove();
+      document.getElementById('vt-map').remove();
+      map = null;
     }
 
     let markers = [];
@@ -172,7 +213,10 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showFormStatus(statusEl, 'error', body.detail || `Fehler (${res.status})`);
+        const detail = Array.isArray(body.detail)
+          ? body.detail.map((d) => d.msg).join(' / ')
+          : body.detail;
+        showFormStatus(statusEl, 'error', detail || `Fehler (${res.status})`);
         return null;
       }
       if (body.warnungen && body.warnungen.length) {
@@ -183,16 +227,27 @@
       return body;
     }
 
+    document.getElementById('vt-vehicle-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      const saved = await submitJson(
+        form, `${BASE}/api/vehicles`, {}, document.getElementById('vt-vehicle-status')
+      );
+      if (saved) {
+        form.reset();
+        loadVehicles(saved.id);
+      }
+    });
+
     document.getElementById('vt-fuel-entry-form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       if (!currentVehicleId) return;
       const form = ev.target;
-      const statusEl = document.getElementById('vt-fuel-entry-status');
       const saved = await submitJson(
         form,
-        `${API_BASE}/api/fuel-entries`,
+        `${BASE}/api/fuel-entries`,
         { vehicle_id: Number(currentVehicleId) },
-        statusEl
+        document.getElementById('vt-fuel-entry-status')
       );
       if (saved) {
         form.reset();
@@ -204,12 +259,11 @@
       ev.preventDefault();
       if (!currentVehicleId) return;
       const form = ev.target;
-      const statusEl = document.getElementById('vt-other-cost-status');
       const saved = await submitJson(
         form,
-        `${API_BASE}/api/other-costs`,
+        `${BASE}/api/other-costs`,
         { vehicle_id: Number(currentVehicleId) },
-        statusEl
+        document.getElementById('vt-other-cost-status')
       );
       if (saved) {
         form.reset();
@@ -217,22 +271,33 @@
       }
     });
 
-    async function loadVehicles() {
-      const res = await fetch(`${API_BASE}/api/vehicles`);
+    async function loadVehicles(selectId) {
+      const res = await fetch(`${BASE}/api/vehicles`);
       const vehicles = await res.json();
       const select = document.getElementById('vt-vehicle-select');
       select.innerHTML = vehicles
-        .map((v) => `<option value="${v.id}">${v.hersteller} ${v.modell} (${v.kennzeichen})</option>`)
+        .map((v) => `<option value="${v.id}">${esc(v.hersteller)} ${esc(v.modell)} (${esc(v.kennzeichen)})</option>`)
         .join('');
-      if (vehicles.length) loadVehicle(vehicles[0].id);
       select.onchange = () => loadVehicle(select.value);
+
+      if (!vehicles.length) {
+        currentVehicleId = null;
+        document.getElementById('vt-stats').innerHTML =
+          '<div class="hint">Noch kein Fahrzeug angelegt – bitte zuerst unter „Fahrzeug anlegen" eintragen.</div>';
+        document.getElementById('vt-vehicle-details').open = true;
+        renderTable([]);
+        return;
+      }
+      const target = vehicles.some((v) => v.id === selectId) ? selectId : vehicles[0].id;
+      select.value = String(target);
+      loadVehicle(target);
     }
 
     async function loadVehicle(vehicleId) {
       currentVehicleId = vehicleId;
       const [entries, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/fuel-entries?vehicle_id=${vehicleId}`).then((r) => r.json()),
-        fetch(`${API_BASE}/api/vehicles/${vehicleId}/stats`).then((r) => r.json()),
+        fetch(`${BASE}/api/fuel-entries?vehicle_id=${vehicleId}`).then((r) => r.json()),
+        fetch(`${BASE}/api/vehicles/${vehicleId}/stats`).then((r) => r.json()),
       ]);
       renderStats(statsRes);
       renderTable(entries);
@@ -240,9 +305,8 @@
     }
 
     function renderStats(s) {
-      const el = document.getElementById('stats');
       const fmt = (v, unit) => (v === null || v === undefined ? '–' : `${v}${unit}`);
-      el.innerHTML = `
+      document.getElementById('vt-stats').innerHTML = `
         <div class="stat"><b>${fmt(s.ø_verbrauch_l_100km, ' l/100km')}</b>Ø Verbrauch</div>
         <div class="stat"><b>${fmt(s.kosten_pro_km, ' €/km')}</b>Kosten/km</div>
         <div class="stat"><b>${fmt(s.kosten_pro_monat, ' €/Monat')}</b>Kosten/Monat</div>
@@ -251,12 +315,11 @@
     }
 
     function renderTable(entries) {
-      const tbody = document.querySelector('#vt-entries tbody');
-      tbody.innerHTML = entries
+      document.querySelector('#vt-entries tbody').innerHTML = entries
         .map(
           (e) => `<tr>
-            <td>${e.datum}</td><td>${e.kilometerstand}</td><td>${e.kraftstoffart}</td>
-            <td>${e.fuellmenge_liter} l</td><td>${e.preis_pro_liter} €</td><td>${e.gesamtpreis} €</td>
+            <td>${esc(e.datum)}</td><td>${esc(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}</td>
+            <td>${esc(e.fuellmenge_liter)} l</td><td>${esc(e.preis_pro_liter)} €</td><td>${esc(e.gesamtpreis)} €</td>
           </tr>`
         )
         .join('');
@@ -270,7 +333,7 @@
       withLocation.forEach((e) => {
         const marker = L.marker([e.lat, e.lon])
           .addTo(map)
-          .bindPopup(`${e.tankstelle_name ?? 'Tankstelle'}<br>${e.datum} – ${e.preis_pro_liter} €/l`);
+          .bindPopup(`${esc(e.tankstelle_name ?? 'Tankstelle')}<br>${esc(e.datum)} – ${esc(e.preis_pro_liter)} €/l`);
         markers.push(marker);
       });
       if (withLocation.length) {
