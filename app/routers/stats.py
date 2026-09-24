@@ -26,6 +26,7 @@ from app.consumption import verbrauch_nach_kraftstoff
 from app.db import get_db
 from app.models import Kostenkategorie, Kraftstoffart
 from app.schemas import VehicleStats
+from app.validation import pruefe_tankluecke
 
 router = APIRouter(prefix="/api/vehicles", tags=["stats"])
 
@@ -101,6 +102,14 @@ def get_vehicle_stats(
     verbrauch_je_art = verbrauch_nach_kraftstoff(fuel_entries, start_km)
     verbrauch = next(iter(verbrauch_je_art.values())) if len(verbrauch_je_art) == 1 else None
 
+    # Offene Tankluecke unabhaengig vom Auswertungszeitraum: letzter bekannter
+    # km-Stand aus allen Quellen gegen die letzte erfasste Tankung (Issue #12).
+    alle_km = [(e.kilometerstand, e.datum) for e in vehicle.fuel_entries]
+    alle_km += [(t.km_ende, t.datum) for t in vehicle.trips]
+    alle_km += [(entry.kilometerstand, entry.datum) for entry in vehicle.logbook_entries
+                if entry.kilometerstand is not None]
+    hinweise = pruefe_tankluecke(db, vehicle_id, *max(alle_km)) if alle_km else []
+
     return VehicleStats(
         vehicle_id=vehicle_id,
         zeitraum_von=zeitraum_von,
@@ -118,4 +127,5 @@ def get_vehicle_stats(
         kosten_pro_monat=round(kosten_pro_monat, 2) if kosten_pro_monat is not None else None,
         anteil_lpg=round(anteil_lpg, 3) if anteil_lpg is not None else None,
         anteil_benzin=round(anteil_benzin, 3) if anteil_benzin is not None else None,
+        hinweise=hinweise,
     )

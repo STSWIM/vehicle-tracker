@@ -64,6 +64,9 @@
     #vehicle-tracker-root .stat b { display: block; font-size: 1.1rem; }
     #vehicle-tracker-root .stat.muted { opacity: 0.55; }
     #vehicle-tracker-root .kategorien { font-size: 0.85rem; opacity: 0.8; }
+    /* Tankluecken-Hinweise (Issue #12) */
+    #vehicle-tracker-root .vt-hinweise { font-size: 0.85rem; color: var(--color-warning, #9a6700); padding: 0.35rem 0 0; }
+    #vehicle-tracker-root .vt-hinweise div + div { margin-top: 0.2rem; }
     #vehicle-tracker-root .hint { padding: 0.75rem 0; opacity: 0.8; }
     #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; }
     #vehicle-tracker-root details.manual-entry summary { padding: 0.5rem 0.9rem; cursor: pointer; font-weight: 600; }
@@ -126,6 +129,7 @@
       </div>
       <div id="vt-stats"></div>
       <div class="kategorien" id="vt-kategorien"></div>
+      <div class="vt-hinweise" id="vt-hinweise" hidden></div>
 
       <h3>Erfassen</h3>
       <details class="manual-entry">
@@ -659,7 +663,19 @@
         .join(' · ');
       const zeitraum = s.zeitraum_von ? `Zeitraum ${fmtDate(s.zeitraum_von)} – ${fmtDate(s.zeitraum_bis)}` : '';
       $('vt-kategorien').innerHTML = [zeitraum, kategorien && `Laufende Kosten: ${kategorien}`].filter(Boolean).join('<br>');
+      renderHinweise(s.hinweise);
     }
+
+    // --- Tankluecken-Hinweise (Issue #12) ------------------------------------
+    // Dauerhafter Hinweis unter den Kennzahlen, solange der letzte bekannte
+    // km-Stand weiter von der letzten Tankung entfernt ist als plausibel.
+    function renderHinweise(hinweise) {
+      const el = $('vt-hinweise');
+      const liste = hinweise || [];
+      el.innerHTML = liste.map((h) => `<div>⚠️ ${esc(h)}</div>`).join('');
+      el.hidden = !liste.length;
+    }
+    // --- Ende Tankluecken-Hinweise -------------------------------------------
 
     // --- Laden & Rendern -----------------------------------------------------
 
@@ -674,6 +690,7 @@
 
       if (!vehicles.length) {
         currentVehicleId = null;
+        renderHinweise([]);
         $('vt-stats').innerHTML =
           '<div class="hint">Noch kein Fahrzeug – über „Anlegen" oben eines erfassen, oder den Besitzer eines Fahrzeugs um eine Freigabe bitten.</div>';
         return;

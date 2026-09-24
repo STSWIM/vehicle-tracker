@@ -6,6 +6,7 @@ from app.access import CurrentUser, accessible_vehicle_ids, get_accessible_vehic
 from app.db import get_db
 from app.models import Trip
 from app.schemas import TripCreate, TripOut
+from app.validation import pruefe_tankluecke
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
 
@@ -39,6 +40,7 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db), user: Curren
     db.add(trip)
     db.commit()
     db.refresh(trip)
+    trip.warnungen = pruefe_tankluecke(db, trip.vehicle_id, trip.km_ende, trip.datum)
     return trip
 
 

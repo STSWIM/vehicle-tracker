@@ -6,6 +6,7 @@ from app.access import CurrentUser, accessible_vehicle_ids, get_accessible_vehic
 from app.db import get_db
 from app.models import LogbookEntry
 from app.schemas import LogbookEntryCreate, LogbookEntryOut
+from app.validation import pruefe_tankluecke
 
 router = APIRouter(prefix="/api/logbook", tags=["logbook"])
 
@@ -35,6 +36,7 @@ def create_logbook_entry(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+    entry.warnungen = pruefe_tankluecke(db, entry.vehicle_id, entry.kilometerstand, entry.datum)
     return entry
 
 

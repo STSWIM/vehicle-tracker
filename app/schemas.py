@@ -120,6 +120,7 @@ class LogbookEntryCreate(BaseModel):
 class LogbookEntryOut(LogbookEntryCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    warnungen: list[str] = []
 
 
 class TripCreate(BaseModel):
@@ -142,6 +143,7 @@ class TripCreate(BaseModel):
 class TripOut(TripCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    warnungen: list[str] = []
 
 
 class VehicleStats(BaseModel):
@@ -171,3 +173,5 @@ class VehicleStats(BaseModel):
     kosten_pro_monat: float | None
     anteil_lpg: float | None
     anteil_benzin: float | None
+    # offene Tankluecke (letzter bekannter km-Stand vs. letzte Tankung), s. Issue #12
+    hinweise: list[str] = []
