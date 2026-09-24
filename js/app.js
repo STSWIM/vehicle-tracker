@@ -180,6 +180,9 @@
         // OSM-Kachelserver verlangen aber einen Referer.
         referrerPolicy: 'strict-origin-when-cross-origin',
       }).addTo(map);
+      // Das Nextcloud-Layout aendert die Containergroesse noch nach der
+      // Initialisierung - ohne Neuvermessung bleibt die Karte teilweise grau.
+      new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById('vt-map'));
     } catch (e) {
       document.getElementById('vt-map').remove();
       map = null;
