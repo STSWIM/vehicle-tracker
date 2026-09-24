@@ -75,9 +75,16 @@ else:
 
     @asynccontextmanager
     async def lifespan(fastapi_app: FastAPI):
+        from app.reminder_notifications import start_notification_task
+
         set_handlers(fastapi_app, enabled_handler)
         init_db()
+        # Taeglicher Job fuer Erinnerungs-Benachrichtigungen; prueft selbst,
+        # ob die App gerade aktiviert ist.
+        reminder_task = start_notification_task()
         yield
+        if reminder_task:
+            reminder_task.cancel()
 
     app = FastAPI(title="Fahrzeug Buchführung", lifespan=lifespan)
     app.add_middleware(AppAPIAuthMiddleware)
