@@ -691,6 +691,7 @@
         fetch(`${BASE}/api/trips?vehicle_id=${vehicleId}`).then((r) => r.json()),
       ]);
       loadStats();
+      loadReminders(vehicleId);
       renderFuelEntries(entries);
       renderMarkers(entries);
       renderLogbook(logbook);
@@ -768,6 +769,242 @@
         map.fitBounds(withLocation.map((e) => [e.lat, e.lon]), { padding: [30, 30], maxZoom: 13 });
       }
     }
+
+    // === Erinnerungen (GitHub-Issue #4) ======================================
+    // Eigenstaendiger Block: Abschnitt, Formular und Hinweis-Badge im Kopf
+    // werden hier per DOM eingefuegt; von aussen nur loadReminders(vehicleId)
+    // aus loadVehicle(). Status (faellig/bald) berechnet das Backend
+    // (/api/reminders/status), gleiche Regeln wie die Nextcloud-Benachrichtigung.
+
+    const REMINDER_TYPES = ['TÜV/HU', 'Versicherung fällig', 'Steuer fällig', 'Service/Inspektion', 'Reifenwechsel', 'Sonstiges'];
+
+    const reminderStyle = document.createElement('style');
+    reminderStyle.textContent = `
+      #vehicle-tracker-root tr.vt-rem-faellig td { background: color-mix(in srgb, var(--color-error, #b3261e) 12%, transparent); }
+      #vehicle-tracker-root tr.vt-rem-bald td { background: color-mix(in srgb, var(--color-warning, #9a6700) 12%, transparent); }
+      #vehicle-tracker-root .vt-rem-state.faellig { color: var(--color-error, #b3261e); font-weight: 600; }
+      #vehicle-tracker-root .vt-rem-state.bald { color: var(--color-warning, #9a6700); font-weight: 600; }
+      #vehicle-tracker-root .vt-reminder-badge { margin-left: auto; border-radius: 999px; padding: 0.2rem 0.8rem; cursor: pointer; font-size: 0.85rem;
+        border: 1px solid var(--color-warning, #9a6700); background: color-mix(in srgb, var(--color-warning, #9a6700) 12%, transparent); color: inherit; }
+      #vehicle-tracker-root .vt-reminder-badge.faellig { border-color: var(--color-error, #b3261e); background: color-mix(in srgb, var(--color-error, #b3261e) 12%, transparent); }
+      #vehicle-tracker-root #vt-reminder-count { font-weight: normal; font-size: 0.85rem; opacity: 0.8; }
+      #vehicle-tracker-root td.vt-rem-actions { white-space: nowrap; }
+    `;
+    document.head.appendChild(reminderStyle);
+
+    const reminderSection = document.createElement('details');
+    reminderSection.className = 'manual-entry';
+    reminderSection.id = 'vt-reminder-section';
+    reminderSection.innerHTML = `
+      <summary>Erinnerungen <span id="vt-reminder-count"></span></summary>
+      <div class="section-body">
+        <form id="vt-reminder-form">
+          <label>Art
+            <select name="typ" required>${REMINDER_TYPES.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+          </label>
+          <label>Beschreibung <input type="text" name="beschreibung" maxlength="300" placeholder="z.B. HU + AU"></label>
+          <label>Fällig am <input type="date" name="faellig_am"></label>
+          <label>Fällig bei km <input type="number" name="faellig_km" min="0"></label>
+          <label>Wiederholen alle … Monate <input type="number" name="intervall_monate" min="1"></label>
+          <label>Wiederholen alle … km <input type="number" name="intervall_km" min="1"></label>
+          <button type="submit" id="vt-reminder-submit">Speichern</button>
+          <button type="button" id="vt-reminder-cancel" hidden>Abbrechen</button>
+          <div class="form-hint">Fälligkeit nach Datum und/oder km-Stand. Mit Intervall wird nach „erledigt" automatisch die nächste Fälligkeit gesetzt. Der Besitzer erhält eine Nextcloud-Benachrichtigung 14 Tage bzw. 500 km vorher und bei Fälligkeit.</div>
+          <div class="form-status" id="vt-reminder-status"></div>
+        </form>
+        <table id="vt-reminders">
+          <thead><tr><th>Art</th><th>Beschreibung</th><th>Fällig am</th><th class="num">Fällig bei</th><th>Intervall</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>`;
+    {
+      const tankbuchHeading = $('vt-entries') && $('vt-entries').previousElementSibling;
+      if (tankbuchHeading && tankbuchHeading.tagName === 'H3') {
+        tankbuchHeading.parentNode.insertBefore(reminderSection, tankbuchHeading);
+      } else {
+        document.querySelector('#vehicle-tracker-root .vt-main').appendChild(reminderSection);
+      }
+    }
+
+    const reminderBadge = document.createElement('button');
+    reminderBadge.type = 'button';
+    reminderBadge.className = 'vt-reminder-badge';
+    reminderBadge.hidden = true;
+    document.querySelector('#vehicle-tracker-root header').appendChild(reminderBadge);
+
+    let reminders = [];
+    let editingReminderId = null;
+    let remindersRequestId = 0;
+
+    function reminderIntervall(r) {
+      const teile = [];
+      if (r.intervall_monate) teile.push(`${fmtNum(r.intervall_monate)} Mon.`);
+      if (r.intervall_km) teile.push(`${fmtNum(r.intervall_km)} km`);
+      return teile.join(' / ');
+    }
+
+    function reminderState(r) {
+      if (r.status === 'faellig') {
+        if (r.rest_tage !== null && r.rest_tage < 0) return `überfällig (${fmtNum(-r.rest_tage)} Tage)`;
+        if (r.rest_tage === 0) return 'heute fällig';
+        return r.rest_km ? `fällig (${fmtNum(-r.rest_km)} km drüber)` : 'km-Stand erreicht';
+      }
+      if (r.status === 'bald') {
+        const teile = [];
+        if (r.rest_tage !== null && r.rest_tage > 0 && r.rest_tage <= 14) teile.push(`in ${fmtNum(r.rest_tage)} Tagen`);
+        if (r.rest_km !== null && r.rest_km > 0 && r.rest_km <= 500) teile.push(`noch ${fmtNum(r.rest_km)} km`);
+        return teile.join(' / ') || 'bald fällig';
+      }
+      return 'offen';
+    }
+
+    function vehicleLabel(vehicleId) {
+      const v = vehicles.find((x) => x.id === vehicleId);
+      return v ? v.kennzeichen : `#${vehicleId}`;
+    }
+
+    async function loadReminders(vehicleId) {
+      const requestId = ++remindersRequestId;
+      let all = [];
+      try {
+        const res = await fetch(`${BASE}/api/reminders/status`);
+        all = res.ok ? await res.json() : [];
+      } catch (e) {
+        all = [];
+      }
+      if (requestId !== remindersRequestId) return;
+      reminders = all;
+      renderReminders(all.filter((r) => r.vehicle_id === Number(vehicleId)));
+      renderReminderBadge(all);
+    }
+
+    function renderReminders(list) {
+      document.querySelector('#vt-reminders tbody').innerHTML = list.length
+        ? list
+          .map(
+            (r) => `<tr class="${r.status ? `vt-rem-${r.status}` : ''}">
+              <td>${esc(r.typ)}</td><td>${esc(r.beschreibung)}</td>
+              <td>${r.faellig_am ? fmtDate(r.faellig_am) : ''}</td>
+              <td class="num">${r.faellig_km === null ? '' : `${fmtNum(r.faellig_km)} km`}</td>
+              <td>${esc(reminderIntervall(r))}</td>
+              <td><span class="vt-rem-state ${r.status || ''}">${esc(reminderState(r))}</span></td>
+              <td class="vt-rem-actions">
+                <button type="button" data-reminder-done="${r.id}" title="Als erledigt markieren">✓ erledigt</button>
+                <button type="button" class="link" data-reminder-edit="${r.id}" title="Bearbeiten">✏️</button>
+                ${deleteButton('/api/reminders', r.id)}
+              </td>
+            </tr>`
+          )
+          .join('')
+        : '<tr><td colspan="7" class="hint">Keine offenen Erinnerungen.</td></tr>';
+      const due = list.filter((r) => r.status).length;
+      $('vt-reminder-count').textContent = list.length ? `(${list.length} offen${due ? `, ${due} fällig/bald` : ''})` : '';
+    }
+
+    function renderReminderBadge(all) {
+      const due = all.filter((r) => r.status);
+      reminderBadge.hidden = !due.length;
+      if (!due.length) return;
+      const overdue = due.some((r) => r.status === 'faellig');
+      reminderBadge.classList.toggle('faellig', overdue);
+      reminderBadge.textContent = `⏰ ${due.length} ${due.length === 1 ? 'Erinnerung' : 'Erinnerungen'} ${overdue ? 'fällig' : 'bald fällig'}`;
+      reminderBadge.title = due
+        .map((r) => `${vehicleLabel(r.vehicle_id)}: ${r.typ}${r.beschreibung ? ` – ${r.beschreibung}` : ''} (${reminderState(r)})`)
+        .join('\n');
+    }
+
+    reminderBadge.addEventListener('click', () => {
+      const first = reminders.find((r) => r.status === 'faellig') || reminders.find((r) => r.status);
+      if (first && first.vehicle_id !== Number(currentVehicleId)) {
+        $('vt-vehicle-select').value = String(first.vehicle_id);
+        loadVehicle(first.vehicle_id);
+      }
+      reminderSection.open = true;
+      reminderSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    function resetReminderForm() {
+      editingReminderId = null;
+      $('vt-reminder-form').reset();
+      $('vt-reminder-submit').textContent = 'Speichern';
+      $('vt-reminder-cancel').hidden = true;
+    }
+
+    $('vt-reminder-cancel').addEventListener('click', () => {
+      resetReminderForm();
+      $('vt-reminder-status').textContent = '';
+    });
+
+    onSubmit('vt-reminder-form', async (form) => {
+      if (!currentVehicleId) return;
+      const editing = editingReminderId !== null;
+      const saved = await submitJson(
+        form,
+        editing ? `${BASE}/api/reminders/${editingReminderId}` : `${BASE}/api/reminders`,
+        { vehicle_id: Number(currentVehicleId) },
+        $('vt-reminder-status'),
+        editing ? 'PUT' : 'POST'
+      );
+      if (saved) {
+        resetReminderForm();
+        loadReminders(currentVehicleId);
+      }
+    });
+
+    content.addEventListener('click', async (ev) => {
+      const edit = ev.target.closest('[data-reminder-edit]');
+      if (edit) {
+        const r = reminders.find((x) => x.id === Number(edit.dataset.reminderEdit));
+        if (!r) return;
+        const form = $('vt-reminder-form');
+        ['typ', 'beschreibung', 'faellig_am', 'faellig_km', 'intervall_monate', 'intervall_km'].forEach((name) => {
+          form.elements[name].value = r[name] ?? '';
+        });
+        editingReminderId = r.id;
+        $('vt-reminder-submit').textContent = 'Änderung speichern';
+        $('vt-reminder-cancel').hidden = false;
+        $('vt-reminder-status').textContent = '';
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+
+      const done = ev.target.closest('[data-reminder-done]');
+      if (!done) return;
+      const r = reminders.find((x) => x.id === Number(done.dataset.reminderDone));
+      if (!r) return;
+      const params = new URLSearchParams();
+      if (r.intervall_km || r.faellig_km !== null) {
+        const answer = window.prompt(
+          r.intervall_km
+            ? 'Kilometerstand bei Erledigung (für die nächste Fälligkeit):'
+            : 'Kilometerstand bei Erledigung (optional):',
+          r.aktueller_km ?? ''
+        );
+        if (answer === null) return;
+        if (answer.trim() !== '') {
+          const km = parseInt(answer.replace(/\./g, ''), 10);
+          if (!Number.isFinite(km) || km < 0) {
+            showFormStatus($('vt-reminder-status'), 'error', 'Ungültiger Kilometerstand.');
+            return;
+          }
+          params.set('km', String(km));
+        }
+      } else if (!window.confirm(`„${r.typ}" als erledigt markieren?`)) {
+        return;
+      }
+      const res = await fetch(`${BASE}/api/reminders/${r.id}/erledigt?${params}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showFormStatus($('vt-reminder-status'), 'error', body.detail || `Fehler (${res.status})`);
+        return;
+      }
+      showFormStatus($('vt-reminder-status'), 'success', r.intervall_monate || r.intervall_km
+        ? '✅ Erledigt – nächste Fälligkeit gesetzt.'
+        : '✅ Erledigt.');
+      loadReminders(currentVehicleId);
+    });
+
+    // === Ende Erinnerungen ===================================================
 
     try {
       me = await fetch(`${BASE}/api/me`).then((r) => r.json());

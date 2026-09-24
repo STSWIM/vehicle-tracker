@@ -217,6 +217,12 @@ class MaintenanceReminder(Base):
     letzte_erledigung_am: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     letzte_erledigung_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Marker gegen Benachrichtigungs-Spam (app/reminder_notifications.py):
+    # je eine Nextcloud-Benachrichtigung beim Eintritt ins Vorwarnfenster und
+    # bei Faelligkeit. Werden beim Bearbeiten/Erledigen zurueckgesetzt.
+    benachrichtigt_vorab_am: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    benachrichtigt_faellig_am: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+
     vehicle: Mapped["Vehicle"] = relationship(back_populates="reminders")
 
 

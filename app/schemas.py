@@ -96,9 +96,15 @@ class ReminderCreate(BaseModel):
     typ: ErinnerungsTyp
     beschreibung: str | None = None
     faellig_am: datetime.date | None = None
-    faellig_km: int | None = None
-    intervall_monate: int | None = None
-    intervall_km: int | None = None
+    faellig_km: int | None = Field(default=None, ge=0)
+    intervall_monate: int | None = Field(default=None, ge=1)
+    intervall_km: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _irgendeine_faelligkeit(self) -> ReminderCreate:
+        if not any((self.faellig_am, self.faellig_km, self.intervall_monate, self.intervall_km)):
+            raise ValueError("Bitte ein Fälligkeitsdatum, einen km-Stand oder ein Intervall angeben")
+        return self
 
 
 class ReminderOut(ReminderCreate):
@@ -107,6 +113,17 @@ class ReminderOut(ReminderCreate):
     erledigt: bool
     letzte_erledigung_am: datetime.date | None = None
     letzte_erledigung_km: int | None = None
+
+
+class ReminderStatusOut(ReminderOut):
+    """Erinnerung plus berechneter Faelligkeitsstatus fuer die Oberflaeche
+    (siehe app/reminder_notifications.reminder_status)."""
+
+    # "faellig" (ueberfaellig/heute), "bald" (innerhalb des Vorwarnfensters) oder None
+    status: str | None = None
+    rest_tage: int | None = None
+    rest_km: int | None = None
+    aktueller_km: int | None = None
 
 
 class LogbookEntryCreate(BaseModel):
