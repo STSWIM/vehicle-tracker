@@ -83,9 +83,6 @@ optional wiederkehrend).
 - Nextcloud-Login/SSO für das Frontend (OpenID Connect über Nextclouds
   `user_oidc`/OIDC-Provider-Fähigkeiten) – aktuell keine Auth im
   Standalone-Modus.
-- Belege dauerhaft in Nextcloud Files ablegen statt nur als lokaler Pfad
-  (`beleg_foto_pfad`/`tacho_foto_pfad` in den Modellen sind vorbereitet,
-  der Upload über WebDAV fehlt noch).
 - Anbindung der Erinnerungen an Nextcloud Notifications.
 - Export für Steuerberater/Verkauf (PDF/CSV-Jahresübersicht).
 - Mehrbenutzer-Feinschliff (aktuell: ein Bot-Codewort pro Fahrzeug, keine

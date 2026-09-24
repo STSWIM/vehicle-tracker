@@ -31,7 +31,7 @@ def create_logbook_entry(
     payload: LogbookEntryCreate, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
     get_accessible_vehicle(db, payload.vehicle_id, user)
-    entry = LogbookEntry(**payload.model_dump())
+    entry = LogbookEntry(**payload.model_dump(), erfasst_von=user.uid)
     db.add(entry)
     db.commit()
     db.refresh(entry)

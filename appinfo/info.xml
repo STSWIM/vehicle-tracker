@@ -86,6 +86,12 @@
                 <description>Sprache der Talk-Bot-/Chat-Nachrichten (siehe app/i18n.py, aktuell nur "de" hinterlegt).</description>
                 <default>de</default>
             </variable>
+            <variable>
+                <name>TALK_DEBUG_PAYLOAD</name>
+                <display-name>Talk-Payload protokollieren</display-name>
+                <description>Bei "true" wird der rohe Inhalt jeder Talk-Bot-Nachricht (object_content) auf INFO-Level geloggt - nur zur Fehlersuche bei Foto-Anhaengen einschalten.</description>
+                <default>false</default>
+            </variable>
         </environment-variables>
     </external-app>
 </info>

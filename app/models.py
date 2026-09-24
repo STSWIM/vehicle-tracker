@@ -155,12 +155,17 @@ class FuelEntry(Base):
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lon: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Pfad relativ zum Nextcloud-Home des Fahrzeugbesitzers
+    # (Fahrzeuge/<Kennzeichen>/Belege/...), siehe app/photo_storage.py.
     beleg_foto_pfad: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tacho_foto_pfad: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     quelle: Mapped[Quelle] = mapped_column(Enum(Quelle), default=Quelle.MANUELL)
     ocr_rohtext: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_konfidenz: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Nextcloud-User-ID dessen, der den Eintrag erfasst hat (Web oder Talk-Bot).
+    erfasst_von: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     erstellt_am: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
@@ -186,6 +191,7 @@ class OtherCost(Base):
 
     beleg_foto_pfad: Mapped[str | None] = mapped_column(String(500), nullable=True)
     quelle: Mapped[Quelle] = mapped_column(Enum(Quelle), default=Quelle.MANUELL)
+    erfasst_von: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     erstellt_am: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
@@ -233,6 +239,7 @@ class LogbookEntry(Base):
     kilometerstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
     eintrag: Mapped[str] = mapped_column(String(300))
     notiz: Mapped[str | None] = mapped_column(Text, nullable=True)
+    erfasst_von: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     erstellt_am: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
@@ -258,6 +265,7 @@ class Trip(Base):
     km_ende: Mapped[int] = mapped_column(Integer)
     zweck: Mapped[Fahrtzweck] = mapped_column(Enum(Fahrtzweck), default=Fahrtzweck.PRIVAT)
     notiz: Mapped[str | None] = mapped_column(Text, nullable=True)
+    erfasst_von: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     erstellt_am: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow

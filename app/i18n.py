@@ -34,6 +34,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "photo_processing_failed": "❌ Foto konnte nicht verarbeitet werden (Download/OCR fehlgeschlagen). Bitte erneut senden.",
         "missing_fields": "Es fehlen noch Pflichtfelder ({felder}). Bitte Foto(s) erneut senden oder den Eintrag manuell in der Web-Oberfläche ergänzen.",
         "kilometerstand_unplausibel": "⚠️ {fehler} Bitte Kilometerstand prüfen und Foto erneut senden.",
+        "photo_not_image": "❌ Das ist keine Bilddatei. Bitte Tacho- bzw. Belegfoto als Bild schicken.",
+        "photo_invalid": "❌ Foto nicht verwendbar: {fehler}.",
+        "photo_store_failed": "⚠️ Die Fotos konnten nicht in den Nextcloud-Dateien des Fahrzeugbesitzers abgelegt werden.",
     }
 }
 

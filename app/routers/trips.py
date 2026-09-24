@@ -35,7 +35,7 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db), user: Curren
             f"km-Stand am Start ({payload.km_start} km) liegt unter dem "
             f"Kilometerstand beim Kauf ({vehicle.kaufkilometerstand} km).",
         )
-    trip = Trip(**payload.model_dump())
+    trip = Trip(**payload.model_dump(), erfasst_von=user.uid)
     db.add(trip)
     db.commit()
     db.refresh(trip)
