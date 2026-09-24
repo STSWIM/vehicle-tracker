@@ -27,9 +27,17 @@ SESSION_TIMEOUT_SECONDS = 15 * 60
 @dataclass
 class CaptureSession:
     conversation_token: str
+    # Talk-Absender ("users/<uid>"): pro Raum UND Absender eine eigene
+    # Erfassung, damit sich Fotos zweier Familienmitglieder im selben Raum
+    # nicht vermischen.
+    actor_id: str = ""
     vehicle_id: int | None = None
     tacho: TachoVorschlag | None = None
     beleg: BelegVorschlag | None = None
+    # Originalfotos bis zur Bestaetigung im Speicher halten; abgelegt werden
+    # sie erst beim Speichern des Eintrags (app/photo_storage.py).
+    tacho_foto: bytes | None = None
+    beleg_foto: bytes | None = None
     last_update: float = field(default_factory=time.time)
 
     @property
@@ -41,20 +49,29 @@ class CaptureSession:
         return time.time() - self.last_update > SESSION_TIMEOUT_SECONDS
 
 
-_sessions: dict[str, CaptureSession] = {}
+_sessions: dict[tuple[str, str], CaptureSession] = {}
 
 
-def get_or_create_session(conversation_token: str) -> CaptureSession:
-    existing = _sessions.get(conversation_token)
-    if existing and not existing.is_expired:
+def _purge_expired() -> None:
+    # Sessions halten Fotos im Speicher - abgelaufene nicht ewig mitschleppen.
+    for key in [k for k, s in _sessions.items() if s.is_expired]:
+        del _sessions[key]
+
+
+def get_or_create_session(conversation_token: str, actor_id: str) -> CaptureSession:
+    _purge_expired()
+    key = (conversation_token, actor_id)
+    existing = _sessions.get(key)
+    if existing:
+        existing.last_update = time.time()
         return existing
-    session = CaptureSession(conversation_token=conversation_token)
-    _sessions[conversation_token] = session
+    session = CaptureSession(conversation_token=conversation_token, actor_id=actor_id)
+    _sessions[key] = session
     return session
 
 
-def clear_session(conversation_token: str) -> None:
-    _sessions.pop(conversation_token, None)
+def clear_session(conversation_token: str, actor_id: str) -> None:
+    _sessions.pop((conversation_token, actor_id), None)
 
 
 def resolve_vehicle_by_codewort(db: Session, codewort: str, user: CurrentUser) -> Vehicle | None:
@@ -117,7 +134,7 @@ def pruefe_kilometerstand_fuer_session(db: Session, session: CaptureSession) -> 
     pruefe_kilometerstand(db, session.vehicle_id, datum, session.tacho.kilometerstand)
 
 
-def build_fuel_entry(session: CaptureSession) -> FuelEntry:
+def build_fuel_entry(session: CaptureSession, erfasst_von: str | None = None) -> FuelEntry:
     """Wandelt eine bestaetigte Session in ein FuelEntry-Objekt um. Wird
     erst nach expliziter Bestaetigung im Chat aufgerufen, wenn
     fehlende_pflichtfelder() bereits leer ist - deshalb hier keine
@@ -141,4 +158,5 @@ def build_fuel_entry(session: CaptureSession) -> FuelEntry:
         gesamtpreis=beleg.gesamtpreis,
         quelle=Quelle.CHAT_BOT,
         ocr_konfidenz=min(beleg.konfidenz, tacho.konfidenz),
+        erfasst_von=erfasst_von,
     )

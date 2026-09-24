@@ -13,7 +13,7 @@ trotzdem willkommen, besonders in folgenden Bereichen:
   sehr hilfreich.
 - **Talk-Bot-Anhänge**: das Auflösen von Bild-Anhängen aus dem
   Nextcloud-Talk-Webhook (`app/talk_bot/webhook.py`,
-  `_extract_attached_image_url`) ist als bekannte Schwachstelle markiert –
+  `extract_talk_attachment`) ist noch nicht gegen jede Talk-Version geprüft –
   wer das gegen eine echte Talk-Instanz verifiziert hat, gerne einen PR
   oder zumindest ein Issue mit den Details öffnen.
 - **Frontend**: aktuell eine bewusst minimale statische Seite

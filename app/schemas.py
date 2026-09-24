@@ -62,8 +62,6 @@ class FuelEntryCreate(BaseModel):
     tankstelle_name: str | None = None
     lat: float | None = None
     lon: float | None = None
-    beleg_foto_pfad: str | None = None
-    tacho_foto_pfad: str | None = None
     quelle: Quelle = Quelle.MANUELL
     ocr_rohtext: str | None = None
     ocr_konfidenz: float | None = None
@@ -73,6 +71,12 @@ class FuelEntryOut(FuelEntryCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     warnungen: list[str] = []
+    # Nur lesbar: die Foto-Pfade setzt ausschliesslich der Foto-Upload
+    # (POST /api/fuel-entries/{id}/foto) bzw. der Talk-Bot - sonst koennte
+    # ein freigegebener Nutzer beliebige Dateien des Besitzers abrufen.
+    beleg_foto_pfad: str | None = None
+    tacho_foto_pfad: str | None = None
+    erfasst_von: str | None = None
 
 
 class OtherCostCreate(BaseModel):
@@ -89,6 +93,7 @@ class OtherCostCreate(BaseModel):
 class OtherCostOut(OtherCostCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    erfasst_von: str | None = None
 
 
 class ReminderCreate(BaseModel):
@@ -138,6 +143,7 @@ class LogbookEntryOut(LogbookEntryCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     warnungen: list[str] = []
+    erfasst_von: str | None = None
 
 
 class TripCreate(BaseModel):
@@ -161,6 +167,7 @@ class TripOut(TripCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     warnungen: list[str] = []
+    erfasst_von: str | None = None
 
 
 class VehicleStats(BaseModel):

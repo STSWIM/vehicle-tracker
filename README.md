@@ -38,8 +38,9 @@ Verbrauchs-/Kostenberechnung, OCR-Pipeline (regelbasiert) und der grobe
 Talk-Bot-Ablauf sind lauffähiger Code. Nicht gegen eine echte Nextcloud-
 Instanz getestet sind bisher: die nc_py_api-Integration in `main.py`
 (ExApp-Modus) und die Anhang-Auflösung im Talk-Webhook
-(`app/talk_bot/webhook.py::_extract_attached_image_url`) – beide Stellen
-sind im Code klar als TODO markiert.
+(`app/talk_bot/webhook.py::extract_talk_attachment`, Download per WebDAV
+als Absender) – zum Prüfen des echten Payload-Formats `TALK_DEBUG_PAYLOAD=true`
+setzen.
 
 ## Schnellstart (Standalone-Modus, ohne Nextcloud)
 
@@ -113,8 +114,8 @@ CHANGELOG.md                Versionshistorie
 
 ## Nächste sinnvolle Schritte
 
-1. `_extract_attached_image_url` gegen eine echte Talk-Unterhaltung testen
-   und anpassen.
+1. `extract_talk_attachment` gegen eine echte Talk-Unterhaltung testen
+   (`TALK_DEBUG_PAYLOAD=true`) und ggf. anpassen.
 2. `app/ocr/parser.py` mit echten Fotos deiner Belege kalibrieren (die
    Regex-Heuristiken sind ein erster Wurf, keine trainierten Modelle).
 3. Erinnerungen (`app/routers/reminders.py`) an Nextcloud Notifications

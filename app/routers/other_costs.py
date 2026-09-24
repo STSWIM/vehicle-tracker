@@ -27,7 +27,7 @@ def create_other_cost(
     payload: OtherCostCreate, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
     get_accessible_vehicle(db, payload.vehicle_id, user)
-    cost = OtherCost(**payload.model_dump())
+    cost = OtherCost(**payload.model_dump(), erfasst_von=user.uid)
     db.add(cost)
     db.commit()
     db.refresh(cost)

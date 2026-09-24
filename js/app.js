@@ -151,6 +151,8 @@
             <label>Gesamtpreis (€) <input type="number" name="gesamtpreis" step="0.01" min="0" required></label>
             <label>Tankstelle <input type="text" name="tankstelle_name"></label>
             <label><input type="checkbox" name="nicht_voll"> nicht vollgetankt</label>
+            <label>Belegfoto <input type="file" id="vt-fuel-beleg-foto" accept="image/jpeg,image/png,image/webp,image/heic"></label>
+            <label>Tachofoto <input type="file" id="vt-fuel-tacho-foto" accept="image/jpeg,image/png,image/webp,image/heic"></label>
             <button type="submit">Speichern</button>
             <div class="form-hint">Zwei von Menge, Preis/l und Gesamtpreis eingeben – der dritte Wert wird berechnet (kursiv).</div>
             <div class="form-status" id="vt-fuel-entry-status"></div>
@@ -235,7 +237,7 @@
       <h3>Tankbuch</h3>
       <table id="vt-entries">
         <thead>
-          <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th></tr>
+          <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th><th></th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -585,19 +587,20 @@
     }
     setupFuelAutoCalc($('vt-fuel-entry-form'));
 
-    function vehicleSubmit(formId, path, statusId) {
+    function vehicleSubmit(formId, path, statusId, afterSave) {
       onSubmit(formId, async (form) => {
         if (!currentVehicleId) return;
         const saved = await submitJson(
           form, `${BASE}${path}`, { vehicle_id: Number(currentVehicleId) }, $(statusId)
         );
         if (saved) {
+          if (afterSave) await afterSave(saved, $(statusId));
           form.reset();
           loadVehicle(currentVehicleId);
         }
       });
     }
-    vehicleSubmit('vt-fuel-entry-form', '/api/fuel-entries', 'vt-fuel-entry-status');
+    vehicleSubmit('vt-fuel-entry-form', '/api/fuel-entries', 'vt-fuel-entry-status', uploadFuelPhotos);
     vehicleSubmit('vt-other-cost-form', '/api/other-costs', 'vt-other-cost-status');
     vehicleSubmit('vt-logbook-form', '/api/logbook', 'vt-logbook-status');
     vehicleSubmit('vt-trip-form', '/api/trips', 'vt-trip-status');
@@ -751,6 +754,57 @@
       });
     })();
     // === Ende Export ==========================================================
+    // --- Belegfotos & "erfasst von" (Issues #3/#6) ---------------------------
+    // Fotos liegen in den Nextcloud-Dateien des Fahrzeugbesitzers
+    // (Fahrzeuge/<Kennzeichen>/Belege) und werden ueber die API ausgeliefert,
+    // damit auch freigegebene Nutzer sie oeffnen koennen.
+
+    const PHOTO_MAX_BYTES = 15 * 1024 * 1024;
+    const photoStyle = document.createElement('style');
+    photoStyle.textContent = `
+      #vehicle-tracker-root .vt-by { display: block; font-size: 0.75rem; opacity: 0.6; }
+      #vehicle-tracker-root a.vt-photo { text-decoration: none; font-size: 0.8rem; margin-right: 0.4rem; white-space: nowrap; }
+      #vehicle-tracker-root details.manual-entry input[type="file"] { max-width: 16em; }
+    `;
+    document.head.appendChild(photoStyle);
+
+    function erfasstVon(entry) {
+      return entry.erfasst_von ? `<span class="vt-by">erfasst von ${esc(entry.erfasst_von)}</span>` : '';
+    }
+
+    function fuelPhotoLinks(entry) {
+      const link = (art, label) =>
+        `<a class="vt-photo" href="${BASE}/api/fuel-entries/${entry.id}/foto?art=${art}" target="_blank" rel="noopener" title="${label} öffnen">📷 ${label}</a>`;
+      return [
+        entry.beleg_foto_pfad ? link('beleg', 'Beleg') : '',
+        entry.tacho_foto_pfad ? link('tacho', 'Tacho') : '',
+      ].join('');
+    }
+
+    // Nach dem Speichern eines Tankbelegs die gewaehlten Fotos hochladen.
+    async function uploadFuelPhotos(saved, statusEl) {
+      const fehler = [];
+      for (const [art, inputId, label] of [['beleg', 'vt-fuel-beleg-foto', 'Belegfoto'], ['tacho', 'vt-fuel-tacho-foto', 'Tachofoto']]) {
+        const file = $(inputId).files[0];
+        if (!file) continue;
+        if (file.size > PHOTO_MAX_BYTES) {
+          fehler.push(`${label}: größer als 15 MB`);
+          continue;
+        }
+        const data = new FormData();
+        data.append('datei', file);
+        try {
+          const res = await fetch(`${BASE}/api/fuel-entries/${saved.id}/foto?art=${art}`, { method: 'POST', body: data });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            fehler.push(`${label}: ${body.detail || `Fehler (${res.status})`}`);
+          }
+        } catch (e) {
+          fehler.push(`${label}: Upload fehlgeschlagen`);
+        }
+      }
+      if (fehler.length) showFormStatus(statusEl, 'error', `Eintrag gespeichert, Foto nicht: ${fehler.join(' / ')}`);
+    }
 
     // --- Laden & Rendern -----------------------------------------------------
 
@@ -797,6 +851,7 @@
             <td>${fmtDate(e.datum)}</td><td class="num">${fmtNum(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}</td>
             <td class="num">${fmtNum(e.fuellmenge_liter, 2)} l</td><td class="num">${fmtNum(e.preis_pro_liter, 3)} €</td>
             <td class="num">${fmtEur(e.gesamtpreis)}</td>
+            <td>${fuelPhotoLinks(e)}${erfasstVon(e)}</td>
           </tr>`
         )
         .join('');
@@ -817,7 +872,7 @@
         .map(
           (e) => `<tr>
             <td>${fmtDate(e.datum)}</td><td class="num">${e.kilometerstand === null ? '' : fmtNum(e.kilometerstand)}</td>
-            <td>${esc(e.eintrag)}</td><td>${esc(e.notiz)}</td><td>${deleteButton('/api/logbook', e.id)}</td>
+            <td>${esc(e.eintrag)}${erfasstVon(e)}</td><td>${esc(e.notiz)}</td><td>${deleteButton('/api/logbook', e.id)}</td>
           </tr>`
         )
         .join('');
@@ -829,7 +884,7 @@
           (t) => `<tr>
             <td>${fmtDate(t.datum)}</td><td>${esc(t.start)}</td><td>${esc(t.ziel)}</td>
             <td class="num">${fmtNum(t.km_start)}</td><td class="num">${fmtNum(t.km_ende)}</td>
-            <td class="num">${fmtNum(t.km_ende - t.km_start)} km</td><td>${esc(t.zweck)}</td>
+            <td class="num">${fmtNum(t.km_ende - t.km_start)} km</td><td>${esc(t.zweck)}${erfasstVon(t)}</td>
             <td>${deleteButton('/api/trips', t.id)}</td>
           </tr>`
         )
