@@ -19,7 +19,7 @@ import datetime
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.access import CurrentUser, get_accessible_vehicle, get_current_user
 from app.consumption import verbrauch_nach_kraftstoff
@@ -121,7 +121,7 @@ def compute_vehicle_stats(
     alle_km += [(t.km_ende, t.datum) for t in vehicle.trips]
     alle_km += [(entry.kilometerstand, entry.datum) for entry in vehicle.logbook_entries
                 if entry.kilometerstand is not None]
-    hinweise = pruefe_tankluecke(db, vehicle_id, *max(alle_km)) if alle_km else []
+    hinweise = pruefe_tankluecke(object_session(vehicle), vehicle_id, *max(alle_km)) if alle_km else []
 
     return VehicleStats(
         vehicle_id=vehicle_id,
