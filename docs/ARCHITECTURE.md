@@ -112,3 +112,25 @@ sich Befehle und Header-Namen zwischen Versionen leicht unterscheiden
 können:
 - https://nextcloud-talk.readthedocs.io/en/latest/bots/
 - https://docs.nextcloud.com/server/stable/developer_manual/exapp_development/tech_details/api/talkbots.html
+
+## Deployment über HaRP (Stolperfallen)
+
+Erprobt auf Nextcloud 34 (nativ, PHP-FPM/nginx) mit HaRP als Deploy-Daemon:
+
+- **nginx: `location ^~ /exapps/`** (mit `^~`) für die Weiterleitung an HaRP.
+  Ohne `^~` gewinnt Nextclouds Standard-Regel für statische Dateien
+  (`location ~ \.(?:css|js|svg|...)$`), und alle `/exapps/...`-Pfade mit
+  Dateiendung (Menü-Icon, Skripte) landen bei Nextcloud statt bei HaRP.
+  AppAPI spricht die ExApp auch intern über diese öffentliche URL an.
+- **`--env` nur für deklarierte Variablen**: `occ app_api:app:register --env`
+  übernimmt nur Variablen, die in `appinfo/info.xml` unter
+  `<environment-variables>` mit nicht-leerem `<default>` stehen.
+- **Registry-Pull ist Pflicht**: AppAPI zieht das Image bei jeder
+  Registrierung aus der Registry, auch wenn es lokal gebaut vorliegt. Image
+  daher *vor* `app_api:app:register` pushen, sonst setzt der Pull den lokalen
+  Tag auf den alten Registry-Stand zurück.
+- **Top-Menü-Skript ohne `.js` registrieren** (`set_script(..., "js/app")`):
+  AppAPI hängt die Endung beim Einsetzen selbst an.
+- **Routes**: `/ui`, `/api`, `/img`, `/js` müssen in `appinfo/info.xml` unter
+  `<routes>` deklariert sein, sonst lehnen HaRP bzw. der AppAPI-Proxy die
+  Anfragen ab.

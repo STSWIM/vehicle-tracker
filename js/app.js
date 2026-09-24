@@ -127,15 +127,22 @@
 
     content.innerHTML = MARKUP;
 
-    if (!window.L) {
-      loadStylesheet('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+    // Karte ist optional: die CSP der eingebetteten Nextcloud-Seite erlaubt
+    // keine Skripte von fremden Hosts (Leaflet-CDN). Scheitert das Laden,
+    // bleibt der Rest der Oberflaeche trotzdem nutzbar.
+    let map = null;
+    try {
+      if (!window.L) {
+        loadStylesheet('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+      }
+      map = L.map('map').setView([51.1657, 10.4515], 6); // Deutschland-Mitte als Default
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap-Mitwirkende',
+      }).addTo(map);
+    } catch (e) {
+      document.getElementById('map').remove();
     }
-
-    const map = L.map('map').setView([51.1657, 10.4515], 6); // Deutschland-Mitte als Default
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap-Mitwirkende',
-    }).addTo(map);
 
     let markers = [];
     let currentVehicleId = null;
@@ -256,6 +263,7 @@
     }
 
     function renderMarkers(entries) {
+      if (!map) return;
       markers.forEach((m) => map.removeLayer(m));
       markers = [];
       const withLocation = entries.filter((e) => e.lat && e.lon);
