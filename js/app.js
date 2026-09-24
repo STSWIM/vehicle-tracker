@@ -49,6 +49,7 @@
     #vehicle-tracker-root details.manual-entry summary { padding: 0.5rem 0.9rem; cursor: pointer; font-weight: 600; }
     #vehicle-tracker-root details.manual-entry form { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0 0.9rem 0.9rem; align-items: flex-end; }
     #vehicle-tracker-root details.manual-entry label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
+    #vehicle-tracker-root details.manual-entry input[type="date"] { min-width: 11em; }
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
     #vehicle-tracker-root .form-status.error { color: var(--color-error, #b3261e); }
     #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
