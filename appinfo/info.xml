@@ -55,7 +55,7 @@
             </route>
             <route>
                 <url>^/api(/.*)?$</url>
-                <verb>GET,POST,DELETE</verb>
+                <verb>GET,POST,PUT,DELETE</verb>
                 <access_level>USER</access_level>
             </route>
             <route>

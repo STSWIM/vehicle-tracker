@@ -7,18 +7,23 @@ Verbrauchsberechnung folgt der ueblichen "Voll-zu-Voll"-Methode: nur
 Tankungen mit nicht_voll=False gelten als verlaessliche Referenzpunkte,
 weil nur dann klar ist, wie viel Kraftstoff seit der letzten Volltankung
 tatsaechlich verbraucht wurde.
+
+Auswertungszeitraum: ohne von/bis der gesamte Zeitraum (Kauf bis heute bzw.
+Verkauf), sonst der gewaehlte. Kaufpreis und km-Stand bei Kauf zaehlen nur,
+wenn der Kauf im Zeitraum liegt (ohne Kaufdatum: nur beim Gesamtzeitraum).
+Anschaffungskosten = Kaufpreis + Kosten der Kategorie "Einmalig".
 """
 from __future__ import annotations
 
 import datetime
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.consumption import verbrauch_l_pro_100km
 from app.db import get_db
-from app.models import FuelEntry, Kraftstoffart, OtherCost, Vehicle
+from app.models import Kostenkategorie, Kraftstoffart, Vehicle
 from app.schemas import VehicleStats
 
 router = APIRouter(prefix="/api/vehicles", tags=["stats"])
@@ -29,63 +34,79 @@ def get_vehicle_stats(
     vehicle_id: int,
     von: datetime.date | None = None,
     bis: datetime.date | None = None,
+    mit_anschaffung: bool = True,
     db: Session = Depends(get_db),
 ) -> VehicleStats:
     vehicle = db.get(Vehicle, vehicle_id)
     if vehicle is None:
         raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
 
-    fuel_q = select(FuelEntry).where(FuelEntry.vehicle_id == vehicle_id)
-    cost_q = select(OtherCost).where(OtherCost.vehicle_id == vehicle_id)
-    if von is not None:
-        fuel_q = fuel_q.where(FuelEntry.datum >= von)
-        cost_q = cost_q.where(OtherCost.datum >= von)
-    if bis is not None:
-        fuel_q = fuel_q.where(FuelEntry.datum <= bis)
-        cost_q = cost_q.where(OtherCost.datum <= bis)
+    def im_zeitraum(datum: datetime.date) -> bool:
+        return (von is None or datum >= von) and (bis is None or datum <= bis)
 
-    fuel_entries = sorted(db.execute(fuel_q).scalars().all(), key=lambda e: e.kilometerstand)
-    other_costs = db.execute(cost_q).scalars().all()
+    gesamtzeitraum = von is None and bis is None
+    kauf_im_zeitraum = im_zeitraum(vehicle.kaufdatum) if vehicle.kaufdatum else gesamtzeitraum
 
-    if fuel_entries:
-        gefahrene_km = float(fuel_entries[-1].kilometerstand - fuel_entries[0].kilometerstand)
-        zeitraum_von = min(e.datum for e in fuel_entries)
-        zeitraum_bis = max(e.datum for e in fuel_entries)
-    else:
-        gefahrene_km = 0.0
-        zeitraum_von = von
-        zeitraum_bis = bis
+    fuel_entries = sorted(
+        (e for e in vehicle.fuel_entries if im_zeitraum(e.datum)), key=lambda e: e.kilometerstand
+    )
+    other_costs = [c for c in vehicle.other_costs if im_zeitraum(c.datum)]
+    trips = [t for t in vehicle.trips if im_zeitraum(t.datum)]
+    logbook = [entry for entry in vehicle.logbook_entries if im_zeitraum(entry.datum)]
 
+    einmalig = [c for c in other_costs if c.kategorie == Kostenkategorie.EINMALIG]
+    laufend = [c for c in other_costs if c.kategorie != Kostenkategorie.EINMALIG]
+
+    kaufpreis = (vehicle.kaufpreis or 0.0) if kauf_im_zeitraum else 0.0
+    anschaffungskosten = kaufpreis + sum(c.betrag for c in einmalig)
     gesamt_kraftstoffkosten = sum(e.gesamtpreis for e in fuel_entries)
-    gesamt_sonstige_kosten = sum(c.betrag for c in other_costs)
+    gesamt_sonstige_kosten = sum(c.betrag for c in laufend)
     gesamtkosten = gesamt_kraftstoffkosten + gesamt_sonstige_kosten
+    if mit_anschaffung:
+        gesamtkosten += anschaffungskosten
+
+    kosten_nach_kategorie: dict[str, float] = defaultdict(float)
+    for c in laufend:
+        kosten_nach_kategorie[c.kategorie.value] += c.betrag
+
+    km_punkte = [e.kilometerstand for e in fuel_entries]
+    km_punkte += [km for t in trips for km in (t.km_start, t.km_ende)]
+    km_punkte += [entry.kilometerstand for entry in logbook if entry.kilometerstand is not None]
+    if kauf_im_zeitraum and vehicle.kaufkilometerstand is not None:
+        km_punkte.append(vehicle.kaufkilometerstand)
+    gefahrene_km = float(max(km_punkte) - min(km_punkte)) if len(km_punkte) >= 2 else 0.0
+
+    daten = [e.datum for e in fuel_entries] + [c.datum for c in other_costs]
+    daten += [t.datum for t in trips] + [entry.datum for entry in logbook]
+    if kauf_im_zeitraum and vehicle.kaufdatum:
+        daten.append(vehicle.kaufdatum)
+    zeitraum_von = von or (min(daten) if daten else None)
+    zeitraum_bis = bis or ((vehicle.verkauft_am or datetime.date.today()) if daten else None)
+
+    kosten_pro_monat = None
+    if zeitraum_von and zeitraum_bis and zeitraum_bis > zeitraum_von:
+        kosten_pro_monat = gesamtkosten / ((zeitraum_bis - zeitraum_von).days / 30.44)
 
     kosten_lpg = sum(e.gesamtpreis for e in fuel_entries if e.kraftstoffart == Kraftstoffart.LPG)
-    kosten_benzin = sum(
-        e.gesamtpreis for e in fuel_entries if e.kraftstoffart == Kraftstoffart.BENZIN
-    )
+    kosten_benzin = sum(e.gesamtpreis for e in fuel_entries if e.kraftstoffart == Kraftstoffart.BENZIN)
     anteil_lpg = kosten_lpg / gesamt_kraftstoffkosten if gesamt_kraftstoffkosten else None
     anteil_benzin = kosten_benzin / gesamt_kraftstoffkosten if gesamt_kraftstoffkosten else None
 
     kosten_pro_km = gesamtkosten / gefahrene_km if gefahrene_km > 0 else None
-
-    kosten_pro_monat = None
-    if zeitraum_von and zeitraum_bis and zeitraum_bis > zeitraum_von:
-        monate = (zeitraum_bis - zeitraum_von).days / 30.44
-        if monate > 0:
-            kosten_pro_monat = gesamtkosten / monate
+    verbrauch = verbrauch_l_pro_100km(fuel_entries)
 
     return VehicleStats(
         vehicle_id=vehicle_id,
         zeitraum_von=zeitraum_von,
         zeitraum_bis=zeitraum_bis,
+        mit_anschaffung=mit_anschaffung,
         gefahrene_km=gefahrene_km,
         gesamt_kraftstoffkosten=round(gesamt_kraftstoffkosten, 2),
         gesamt_sonstige_kosten=round(gesamt_sonstige_kosten, 2),
+        anschaffungskosten=round(anschaffungskosten, 2),
+        kosten_nach_kategorie={k: round(v, 2) for k, v in kosten_nach_kategorie.items()},
         gesamtkosten=round(gesamtkosten, 2),
-        ø_verbrauch_l_100km=(
-            round(v, 2) if (v := verbrauch_l_pro_100km(fuel_entries)) is not None else None
-        ),
+        ø_verbrauch_l_100km=round(verbrauch, 2) if verbrauch is not None else None,
         kosten_pro_km=round(kosten_pro_km, 3) if kosten_pro_km is not None else None,
         kosten_pro_monat=round(kosten_pro_monat, 2) if kosten_pro_monat is not None else None,
         anteil_lpg=round(anteil_lpg, 3) if anteil_lpg is not None else None,

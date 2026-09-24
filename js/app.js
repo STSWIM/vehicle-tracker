@@ -27,6 +27,12 @@
     String(value ?? '').replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
+  const fmtNum = (v, digits = 0) =>
+    v === null || v === undefined
+      ? '–'
+      : Number(v).toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const fmtEur = (v) => (v === null || v === undefined ? '–' : `${fmtNum(v, 2)} €`);
+  const fmtDate = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE') : '–');
 
   const STYLE = `
     #vehicle-tracker-root {
@@ -37,17 +43,25 @@
       margin: 0.75rem;
       padding: 0.75rem 1.25rem 1.25rem;
     }
-    #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; }
+    #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    #vehicle-tracker-root h3 { margin: 1.25rem 0 0.25rem; font-size: 1rem; }
     #vehicle-tracker-root #vt-map { height: 320px; margin-top: 0.75rem; border-radius: 8px; }
     #vehicle-tracker-root table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
     #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border, #eee); }
-    #vehicle-tracker-root #vt-stats { padding: 0.75rem 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
-    #vehicle-tracker-root .stat { background: var(--color-background-dark, #f5f5f5); border-radius: 8px; padding: 0.5rem 0.9rem; }
+    #vehicle-tracker-root td.num, #vehicle-tracker-root th.num { text-align: right; }
+    #vehicle-tracker-root .auswertung-controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; }
+    #vehicle-tracker-root .auswertung-controls label { display: flex; gap: 0.35rem; align-items: center; }
+    #vehicle-tracker-root .auswertung-controls input[type="date"] { min-width: 11em; }
+    #vehicle-tracker-root #vt-stats { padding: 0.5rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    #vehicle-tracker-root .stat { background: var(--color-background-dark, #f5f5f5); border-radius: 8px; padding: 0.5rem 0.9rem; min-width: 8.5rem; }
     #vehicle-tracker-root .stat b { display: block; font-size: 1.1rem; }
+    #vehicle-tracker-root .stat.muted { opacity: 0.55; }
+    #vehicle-tracker-root .kategorien { font-size: 0.85rem; opacity: 0.8; }
     #vehicle-tracker-root .hint { padding: 0.75rem 0; opacity: 0.8; }
     #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; }
     #vehicle-tracker-root details.manual-entry summary { padding: 0.5rem 0.9rem; cursor: pointer; font-weight: 600; }
-    #vehicle-tracker-root details.manual-entry form { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0 0.9rem 0.9rem; align-items: flex-end; }
+    #vehicle-tracker-root details.manual-entry .section-body { padding: 0 0.9rem 0.9rem; }
+    #vehicle-tracker-root details.manual-entry form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; }
     #vehicle-tracker-root details.manual-entry label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
     #vehicle-tracker-root details.manual-entry input[type="date"] { min-width: 11em; }
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
@@ -56,6 +70,7 @@
     #vehicle-tracker-root .form-status.error { color: var(--color-error, #b3261e); }
     #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
     #vehicle-tracker-root .form-status.success { color: var(--color-success, #1a7f37); }
+    #vehicle-tracker-root button.link { background: none; border: none; padding: 0 0.3rem; cursor: pointer; min-height: 0; }
   `;
 
   const MARKUP = `
@@ -63,80 +78,147 @@
       <header>
         <label for="vt-vehicle-select">Fahrzeug:</label>
         <select id="vt-vehicle-select"></select>
+        <button type="button" id="vt-edit-vehicle" hidden>Bearbeiten</button>
       </header>
 
+      <h3>Kostenauswertung</h3>
+      <div class="auswertung-controls">
+        <label><input type="radio" name="vt-zeitraum" value="gesamt" checked> Gesamter Zeitraum</label>
+        <label><input type="radio" name="vt-zeitraum" value="auswahl"> Zeitraum:</label>
+        <input type="date" id="vt-von" disabled> –
+        <input type="date" id="vt-bis" disabled>
+        <label><input type="checkbox" id="vt-mit-anschaffung" checked> Anschaffungskosten einbeziehen</label>
+      </div>
       <div id="vt-stats"></div>
+      <div class="kategorien" id="vt-kategorien"></div>
 
+      <h3>Erfassen</h3>
       <details class="manual-entry" id="vt-vehicle-details">
-        <summary>Fahrzeug anlegen</summary>
-        <form id="vt-vehicle-form">
-          <label>Kennzeichen <input type="text" name="kennzeichen" required></label>
-          <label>Hersteller <input type="text" name="hersteller" required></label>
-          <label>Modell <input type="text" name="modell" required></label>
-          <label>Variante <input type="text" name="variante"></label>
-          <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
-          <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
-          <label>Kaufdatum <input type="date" name="kaufdatum"></label>
-          <label>km-Stand bei Kauf <input type="number" name="kaufkilometerstand" min="0"></label>
-          <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
-          <button type="submit">Anlegen</button>
-          <div class="form-status" id="vt-vehicle-status"></div>
-        </form>
+        <summary id="vt-vehicle-summary">Fahrzeug anlegen</summary>
+        <div class="section-body">
+          <form id="vt-vehicle-form">
+            <label>Kennzeichen <input type="text" name="kennzeichen" required></label>
+            <label>Hersteller <input type="text" name="hersteller" required></label>
+            <label>Modell <input type="text" name="modell" required></label>
+            <label>Variante <input type="text" name="variante"></label>
+            <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
+            <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
+            <label>Kaufdatum <input type="date" name="kaufdatum"></label>
+            <label>Anschaffungspreis (€) <input type="number" name="kaufpreis" step="0.01" min="0"></label>
+            <label>km-Stand bei Kauf <input type="number" name="kaufkilometerstand" min="0"></label>
+            <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
+            <button type="submit" id="vt-vehicle-submit">Anlegen</button>
+            <button type="button" id="vt-vehicle-cancel" hidden>Abbrechen</button>
+            <div class="form-status" id="vt-vehicle-status"></div>
+          </form>
+        </div>
       </details>
 
       <details class="manual-entry">
-        <summary>Tankbeleg manuell erfassen</summary>
-        <form id="vt-fuel-entry-form">
-          <label>Datum <input type="date" name="datum" required></label>
-          <label>Kilometerstand <input type="number" name="kilometerstand" min="0" required></label>
-          <label>Kraftstoff
-            <select name="kraftstoffart" required>
-              <option value="LPG">LPG</option>
-              <option value="Benzin">Benzin</option>
-              <option value="Diesel">Diesel</option>
-              <option value="Strom">Strom</option>
-            </select>
-          </label>
-          <label>Menge (l) <input type="number" name="fuellmenge_liter" step="0.01" min="0" required></label>
-          <label>Preis/l (€) <input type="number" name="preis_pro_liter" step="0.001" min="0" required></label>
-          <label>Gesamtpreis (€) <input type="number" name="gesamtpreis" step="0.01" min="0" required></label>
-          <label>Tankstelle <input type="text" name="tankstelle_name"></label>
-          <label><input type="checkbox" name="nicht_voll"> nicht vollgetankt</label>
-          <button type="submit">Speichern</button>
-          <div class="form-hint">Zwei von Menge, Preis/l und Gesamtpreis eingeben – der dritte Wert wird berechnet (kursiv).</div>
-          <div class="form-status" id="vt-fuel-entry-status"></div>
-        </form>
+        <summary>Tankbeleg</summary>
+        <div class="section-body">
+          <form id="vt-fuel-entry-form">
+            <label>Datum <input type="date" name="datum" required></label>
+            <label>Kilometerstand <input type="number" name="kilometerstand" min="0" required></label>
+            <label>Kraftstoff
+              <select name="kraftstoffart" required>
+                <option value="LPG">LPG</option>
+                <option value="Benzin">Benzin</option>
+                <option value="Diesel">Diesel</option>
+                <option value="Strom">Strom</option>
+              </select>
+            </label>
+            <label>Menge (l) <input type="number" name="fuellmenge_liter" step="0.01" min="0" required></label>
+            <label>Preis/l (€) <input type="number" name="preis_pro_liter" step="0.001" min="0" required></label>
+            <label>Gesamtpreis (€) <input type="number" name="gesamtpreis" step="0.01" min="0" required></label>
+            <label>Tankstelle <input type="text" name="tankstelle_name"></label>
+            <label><input type="checkbox" name="nicht_voll"> nicht vollgetankt</label>
+            <button type="submit">Speichern</button>
+            <div class="form-hint">Zwei von Menge, Preis/l und Gesamtpreis eingeben – der dritte Wert wird berechnet (kursiv).</div>
+            <div class="form-status" id="vt-fuel-entry-status"></div>
+          </form>
+        </div>
       </details>
 
       <details class="manual-entry">
-        <summary>Sonstige Kosten manuell erfassen</summary>
-        <form id="vt-other-cost-form">
-          <label>Datum <input type="date" name="datum" required></label>
-          <label>Kategorie
-            <select name="kategorie" required>
-              <option value="Versicherung">Versicherung</option>
-              <option value="Steuer">Steuer</option>
-              <option value="Finanzierung">Finanzierung</option>
-              <option value="Reifen/Teile">Reifen/Teile</option>
-              <option value="Service/TÜV">Service/TÜV</option>
-              <option value="Waschen">Waschen</option>
-              <option value="Einmalig">Einmalig</option>
-              <option value="Einnahme">Einnahme</option>
-              <option value="Sonstiges">Sonstiges</option>
-            </select>
-          </label>
-          <label>Betrag (€) <input type="number" name="betrag" step="0.01" required></label>
-          <label>Beschreibung <input type="text" name="beschreibung"></label>
-          <label><input type="checkbox" name="jaehrlich_wiederkehrend"> jährlich wiederkehrend</label>
-          <button type="submit">Speichern</button>
-          <div class="form-status" id="vt-other-cost-status"></div>
-        </form>
+        <summary>Sonstige Kosten</summary>
+        <div class="section-body">
+          <form id="vt-other-cost-form">
+            <label>Datum <input type="date" name="datum" required></label>
+            <label>Kategorie
+              <select name="kategorie" required>
+                <option value="Versicherung">Versicherung</option>
+                <option value="Steuer">Steuer</option>
+                <option value="Finanzierung">Finanzierung</option>
+                <option value="Reifen/Teile">Reifen/Teile</option>
+                <option value="Service/TÜV">Service/TÜV</option>
+                <option value="Waschen">Waschen</option>
+                <option value="Einmalig">Einmalig (zählt zur Anschaffung)</option>
+                <option value="Einnahme">Einnahme</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </label>
+            <label>Betrag (€) <input type="number" name="betrag" step="0.01" required></label>
+            <label>Beschreibung <input type="text" name="beschreibung"></label>
+            <label><input type="checkbox" name="jaehrlich_wiederkehrend"> jährlich wiederkehrend</label>
+            <button type="submit">Speichern</button>
+            <div class="form-status" id="vt-other-cost-status"></div>
+          </form>
+        </div>
       </details>
 
+      <details class="manual-entry">
+        <summary>Wartungslogbuch</summary>
+        <div class="section-body">
+          <form id="vt-logbook-form">
+            <label>Datum <input type="date" name="datum" required></label>
+            <label>km-Stand <input type="number" name="kilometerstand" min="0"></label>
+            <label>Eintrag <input type="text" name="eintrag" required maxlength="300" placeholder="z.B. Ölwechsel + Filter"></label>
+            <label>Notiz <input type="text" name="notiz"></label>
+            <button type="submit">Eintragen</button>
+            <div class="form-status" id="vt-logbook-status"></div>
+          </form>
+          <table id="vt-logbook">
+            <thead><tr><th>Datum</th><th class="num">km</th><th>Eintrag</th><th>Notiz</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+
+      <details class="manual-entry">
+        <summary>Fahrtenbuch</summary>
+        <div class="section-body">
+          <form id="vt-trip-form">
+            <label>Datum <input type="date" name="datum" required></label>
+            <label>Start <input type="text" name="start" required></label>
+            <label>Ziel <input type="text" name="ziel" required></label>
+            <label>km-Stand Start <input type="number" name="km_start" min="0" required></label>
+            <label>km-Stand Ende <input type="number" name="km_ende" min="0" required></label>
+            <label>Zweck
+              <select name="zweck">
+                <option value="Privat">Privat</option>
+                <option value="Dienstlich">Dienstlich</option>
+                <option value="Arbeitsweg">Arbeitsweg</option>
+              </select>
+            </label>
+            <label>Notiz <input type="text" name="notiz"></label>
+            <button type="submit">Eintragen</button>
+            <div class="form-hint">Hinweis: Da Einträge nachträglich änderbar sind, ersetzt dieses Fahrtenbuch kein vom Finanzamt anerkanntes.</div>
+            <div class="form-status" id="vt-trip-status"></div>
+          </form>
+          <div class="kategorien" id="vt-trip-summen"></div>
+          <table id="vt-trips">
+            <thead><tr><th>Datum</th><th>Start</th><th>Ziel</th><th class="num">km Start</th><th class="num">km Ende</th><th class="num">Strecke</th><th>Zweck</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+
+      <h3>Tankbuch</h3>
       <div id="vt-map"></div>
       <table id="vt-entries">
         <thead>
-          <tr><th>Datum</th><th>km</th><th>Kraftstoff</th><th>Menge</th><th>Preis/l</th><th>Gesamt</th></tr>
+          <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -168,6 +250,7 @@
     styleTag.textContent = STYLE;
     document.head.appendChild(styleTag);
     content.innerHTML = MARKUP;
+    const $ = (id) => document.getElementById(id);
 
     // Leaflet wird mitgeliefert statt vom CDN geladen: die CSP der
     // Nextcloud-Seite erlaubt keine Stylesheets/Skripte von fremden Hosts.
@@ -187,21 +270,23 @@
       }).addTo(map);
       // Das Nextcloud-Layout aendert die Containergroesse noch nach der
       // Initialisierung - ohne Neuvermessung bleibt die Karte teilweise grau.
-      new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById('vt-map'));
+      new ResizeObserver(() => map.invalidateSize()).observe($('vt-map'));
     } catch (e) {
-      document.getElementById('vt-map').remove();
+      $('vt-map').remove();
       map = null;
     }
 
-    let markers = [];
+    let vehicles = [];
     let currentVehicleId = null;
+    let editingVehicleId = null;
+    let markers = [];
 
     function showFormStatus(el, kind, message) {
       el.textContent = message;
       el.className = `form-status ${kind}`;
     }
 
-    async function submitJson(form, url, extraFields, statusEl) {
+    function formPayload(form, extraFields) {
       const data = Object.fromEntries(new FormData(form).entries());
       const payload = { ...extraFields };
       for (const [key, value] of Object.entries(data)) {
@@ -214,15 +299,19 @@
           payload[key] = value === '' ? null : value;
         }
       }
+      return payload;
+    }
+
+    async function submitJson(form, url, extraFields, statusEl, method = 'POST') {
       const res = await fetch(url, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(formPayload(form, extraFields)),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         const detail = Array.isArray(body.detail)
-          ? body.detail.map((d) => d.msg).join(' / ')
+          ? body.detail.map((d) => d.msg.replace(/^Value error, /, '')).join(' / ')
           : body.detail;
         showFormStatus(statusEl, 'error', detail || `Fehler (${res.status})`);
         return null;
@@ -235,17 +324,64 @@
       return body;
     }
 
-    document.getElementById('vt-vehicle-form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const form = ev.target;
+    async function deleteEntry(url) {
+      if (!window.confirm('Eintrag wirklich löschen?')) return false;
+      const res = await fetch(url, { method: 'DELETE' });
+      return res.ok;
+    }
+
+    function onSubmit(formId, handler) {
+      $(formId).addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        await handler(ev.target);
+      });
+    }
+
+    // --- Fahrzeug anlegen / bearbeiten ---------------------------------------
+
+    function startEditVehicle() {
+      const vehicle = vehicles.find((v) => v.id === Number(currentVehicleId));
+      if (!vehicle) return;
+      editingVehicleId = vehicle.id;
+      const form = $('vt-vehicle-form');
+      for (const input of form.elements) {
+        if (input.name) input.value = vehicle[input.name] ?? '';
+      }
+      $('vt-vehicle-summary').textContent = `Fahrzeug bearbeiten: ${vehicle.hersteller} ${vehicle.modell}`;
+      $('vt-vehicle-submit').textContent = 'Speichern';
+      $('vt-vehicle-cancel').hidden = false;
+      $('vt-vehicle-status').textContent = '';
+      $('vt-vehicle-details').open = true;
+      $('vt-vehicle-details').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function stopEditVehicle() {
+      editingVehicleId = null;
+      $('vt-vehicle-form').reset();
+      $('vt-vehicle-summary').textContent = 'Fahrzeug anlegen';
+      $('vt-vehicle-submit').textContent = 'Anlegen';
+      $('vt-vehicle-cancel').hidden = true;
+    }
+
+    $('vt-edit-vehicle').addEventListener('click', startEditVehicle);
+    $('vt-vehicle-cancel').addEventListener('click', stopEditVehicle);
+
+    onSubmit('vt-vehicle-form', async (form) => {
+      const editing = editingVehicleId !== null;
       const saved = await submitJson(
-        form, `${BASE}/api/vehicles`, {}, document.getElementById('vt-vehicle-status')
+        form,
+        editing ? `${BASE}/api/vehicles/${editingVehicleId}` : `${BASE}/api/vehicles`,
+        {},
+        $('vt-vehicle-status'),
+        editing ? 'PUT' : 'POST'
       );
       if (saved) {
-        form.reset();
+        stopEditVehicle();
         loadVehicles(saved.id);
       }
     });
+
+    // --- Tankbeleg mit Mitrechnen --------------------------------------------
 
     // Aus zwei der drei Werte Menge/Preis/Gesamt wird der dritte berechnet.
     // Berechnet wird immer das Feld, das der Nutzer nicht unter den zuletzt
@@ -286,55 +422,94 @@
         fields.forEach((f) => form.elements[f].classList.remove('vt-computed'));
       });
     }
-    setupFuelAutoCalc(document.getElementById('vt-fuel-entry-form'));
+    setupFuelAutoCalc($('vt-fuel-entry-form'));
 
-    document.getElementById('vt-fuel-entry-form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      if (!currentVehicleId) return;
-      const form = ev.target;
-      const saved = await submitJson(
-        form,
-        `${BASE}/api/fuel-entries`,
-        { vehicle_id: Number(currentVehicleId) },
-        document.getElementById('vt-fuel-entry-status')
-      );
-      if (saved) {
-        form.reset();
-        loadVehicle(currentVehicleId);
-      }
-    });
+    function vehicleSubmit(formId, path, statusId) {
+      onSubmit(formId, async (form) => {
+        if (!currentVehicleId) return;
+        const saved = await submitJson(
+          form, `${BASE}${path}`, { vehicle_id: Number(currentVehicleId) }, $(statusId)
+        );
+        if (saved) {
+          form.reset();
+          loadVehicle(currentVehicleId);
+        }
+      });
+    }
+    vehicleSubmit('vt-fuel-entry-form', '/api/fuel-entries', 'vt-fuel-entry-status');
+    vehicleSubmit('vt-other-cost-form', '/api/other-costs', 'vt-other-cost-status');
+    vehicleSubmit('vt-logbook-form', '/api/logbook', 'vt-logbook-status');
+    vehicleSubmit('vt-trip-form', '/api/trips', 'vt-trip-status');
 
-    document.getElementById('vt-other-cost-form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      if (!currentVehicleId) return;
-      const form = ev.target;
-      const saved = await submitJson(
-        form,
-        `${BASE}/api/other-costs`,
-        { vehicle_id: Number(currentVehicleId) },
-        document.getElementById('vt-other-cost-status')
-      );
-      if (saved) {
-        form.reset();
-        loadVehicle(currentVehicleId);
-      }
+    // --- Auswertung ----------------------------------------------------------
+
+    document.querySelectorAll('input[name="vt-zeitraum"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        const auswahl = radio.value === 'auswahl' && radio.checked;
+        $('vt-von').disabled = !auswahl;
+        $('vt-bis').disabled = !auswahl;
+        loadStats();
+      });
     });
+    ['vt-von', 'vt-bis', 'vt-mit-anschaffung'].forEach((id) => $(id).addEventListener('change', loadStats));
+
+    // Zaehler gegen ueberholte Antworten: mehrere Aenderungen kurz
+    // hintereinander (Zeitraum-Umschalter, von, bis) starten parallele
+    // Anfragen, und eine langsamere aeltere darf die neueste nicht ueberschreiben.
+    let statsRequestId = 0;
+
+    async function loadStats() {
+      if (!currentVehicleId) return;
+      const requestId = ++statsRequestId;
+      const params = new URLSearchParams();
+      if (document.querySelector('input[name="vt-zeitraum"]:checked').value === 'auswahl') {
+        if ($('vt-von').value) params.set('von', $('vt-von').value);
+        if ($('vt-bis').value) params.set('bis', $('vt-bis').value);
+      }
+      params.set('mit_anschaffung', $('vt-mit-anschaffung').checked ? 'true' : 'false');
+      const s = await fetch(`${BASE}/api/vehicles/${currentVehicleId}/stats?${params}`).then((r) => r.json());
+      if (requestId === statsRequestId) renderStats(s);
+    }
+
+    function renderStats(s) {
+      const card = (value, label, muted = false) =>
+        `<div class="stat${muted ? ' muted' : ''}"><b>${value}</b>${label}</div>`;
+      $('vt-stats').innerHTML = [
+        card(fmtEur(s.gesamtkosten), 'Gesamtkosten'),
+        card(fmtEur(s.gesamt_kraftstoffkosten), 'Kraftstoff'),
+        card(fmtEur(s.gesamt_sonstige_kosten), 'Laufende Kosten'),
+        card(fmtEur(s.anschaffungskosten), s.mit_anschaffung ? 'Anschaffung' : 'Anschaffung (nicht einbezogen)', !s.mit_anschaffung),
+        card(`${fmtNum(s.gefahrene_km)} km`, 'Gefahren'),
+        card(s.kosten_pro_km === null ? '–' : `${fmtNum(s.kosten_pro_km, 3)} €`, 'Kosten/km'),
+        card(fmtEur(s.kosten_pro_monat), 'Kosten/Monat'),
+        card(s.ø_verbrauch_l_100km === null ? '–' : `${fmtNum(s.ø_verbrauch_l_100km, 2)} l`, 'Ø Verbrauch/100 km'),
+      ].join('');
+      const kategorien = Object.entries(s.kosten_nach_kategorie)
+        .map(([name, betrag]) => `${esc(name)}: ${fmtEur(betrag)}`)
+        .join(' · ');
+      const zeitraum = s.zeitraum_von ? `Zeitraum ${fmtDate(s.zeitraum_von)} – ${fmtDate(s.zeitraum_bis)}` : '';
+      $('vt-kategorien').innerHTML = [zeitraum, kategorien && `Laufende Kosten: ${kategorien}`].filter(Boolean).join('<br>');
+    }
+
+    // --- Laden & Rendern -----------------------------------------------------
 
     async function loadVehicles(selectId) {
-      const res = await fetch(`${BASE}/api/vehicles`);
-      const vehicles = await res.json();
-      const select = document.getElementById('vt-vehicle-select');
+      vehicles = await fetch(`${BASE}/api/vehicles`).then((r) => r.json());
+      const select = $('vt-vehicle-select');
       select.innerHTML = vehicles
         .map((v) => `<option value="${v.id}">${esc(v.hersteller)} ${esc(v.modell)} (${esc(v.kennzeichen)})</option>`)
         .join('');
-      select.onchange = () => loadVehicle(select.value);
+      select.onchange = () => {
+        stopEditVehicle();
+        loadVehicle(select.value);
+      };
+      $('vt-edit-vehicle').hidden = !vehicles.length;
 
       if (!vehicles.length) {
         currentVehicleId = null;
-        document.getElementById('vt-stats').innerHTML =
+        $('vt-stats').innerHTML =
           '<div class="hint">Noch kein Fahrzeug angelegt – bitte zuerst unter „Fahrzeug anlegen" eintragen.</div>';
-        document.getElementById('vt-vehicle-details').open = true;
-        renderTable([]);
+        $('vt-vehicle-details').open = true;
         return;
       }
       const target = vehicles.some((v) => v.id === selectId) ? selectId : vehicles[0].id;
@@ -344,34 +519,72 @@
 
     async function loadVehicle(vehicleId) {
       currentVehicleId = vehicleId;
-      const [entries, statsRes] = await Promise.all([
+      const [entries, logbook, trips] = await Promise.all([
         fetch(`${BASE}/api/fuel-entries?vehicle_id=${vehicleId}`).then((r) => r.json()),
-        fetch(`${BASE}/api/vehicles/${vehicleId}/stats`).then((r) => r.json()),
+        fetch(`${BASE}/api/logbook?vehicle_id=${vehicleId}`).then((r) => r.json()),
+        fetch(`${BASE}/api/trips?vehicle_id=${vehicleId}`).then((r) => r.json()),
       ]);
-      renderStats(statsRes);
-      renderTable(entries);
+      loadStats();
+      renderFuelEntries(entries);
       renderMarkers(entries);
+      renderLogbook(logbook);
+      renderTrips(trips);
     }
 
-    function renderStats(s) {
-      const fmt = (v, unit) => (v === null || v === undefined ? '–' : `${v}${unit}`);
-      document.getElementById('vt-stats').innerHTML = `
-        <div class="stat"><b>${fmt(s.ø_verbrauch_l_100km, ' l/100km')}</b>Ø Verbrauch</div>
-        <div class="stat"><b>${fmt(s.kosten_pro_km, ' €/km')}</b>Kosten/km</div>
-        <div class="stat"><b>${fmt(s.kosten_pro_monat, ' €/Monat')}</b>Kosten/Monat</div>
-        <div class="stat"><b>${fmt(s.gesamtkosten, ' €')}</b>Gesamtkosten</div>
-      `;
-    }
-
-    function renderTable(entries) {
+    function renderFuelEntries(entries) {
       document.querySelector('#vt-entries tbody').innerHTML = entries
         .map(
           (e) => `<tr>
-            <td>${esc(e.datum)}</td><td>${esc(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}</td>
-            <td>${esc(e.fuellmenge_liter)} l</td><td>${esc(e.preis_pro_liter)} €</td><td>${esc(e.gesamtpreis)} €</td>
+            <td>${fmtDate(e.datum)}</td><td class="num">${fmtNum(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}</td>
+            <td class="num">${fmtNum(e.fuellmenge_liter, 2)} l</td><td class="num">${fmtNum(e.preis_pro_liter, 3)} €</td>
+            <td class="num">${fmtEur(e.gesamtpreis)}</td>
           </tr>`
         )
         .join('');
+    }
+
+    function deleteButton(path, id) {
+      return `<button type="button" class="link" data-delete="${path}/${id}" title="Löschen">🗑</button>`;
+    }
+
+    content.addEventListener('click', async (ev) => {
+      const target = ev.target.closest('[data-delete]');
+      if (!target) return;
+      if (await deleteEntry(`${BASE}${target.dataset.delete}`)) loadVehicle(currentVehicleId);
+    });
+
+    function renderLogbook(entries) {
+      document.querySelector('#vt-logbook tbody').innerHTML = entries
+        .map(
+          (e) => `<tr>
+            <td>${fmtDate(e.datum)}</td><td class="num">${e.kilometerstand === null ? '' : fmtNum(e.kilometerstand)}</td>
+            <td>${esc(e.eintrag)}</td><td>${esc(e.notiz)}</td><td>${deleteButton('/api/logbook', e.id)}</td>
+          </tr>`
+        )
+        .join('');
+    }
+
+    function renderTrips(trips) {
+      document.querySelector('#vt-trips tbody').innerHTML = trips
+        .map(
+          (t) => `<tr>
+            <td>${fmtDate(t.datum)}</td><td>${esc(t.start)}</td><td>${esc(t.ziel)}</td>
+            <td class="num">${fmtNum(t.km_start)}</td><td class="num">${fmtNum(t.km_ende)}</td>
+            <td class="num">${fmtNum(t.km_ende - t.km_start)} km</td><td>${esc(t.zweck)}</td>
+            <td>${deleteButton('/api/trips', t.id)}</td>
+          </tr>`
+        )
+        .join('');
+
+      const summen = {};
+      trips.forEach((t) => { summen[t.zweck] = (summen[t.zweck] || 0) + (t.km_ende - t.km_start); });
+      $('vt-trip-summen').textContent = Object.keys(summen).length
+        ? 'Summe: ' + Object.entries(summen).map(([zweck, km]) => `${zweck} ${fmtNum(km)} km`).join(' · ')
+        : '';
+
+      // Naechste Fahrt startet ueblicherweise beim letzten Ende-km-Stand.
+      const kmStart = $('vt-trip-form').elements.km_start;
+      if (!kmStart.value && trips.length) kmStart.value = Math.max(...trips.map((t) => t.km_ende));
     }
 
     function renderMarkers(entries) {
@@ -382,7 +595,7 @@
       withLocation.forEach((e) => {
         const marker = L.marker([e.lat, e.lon])
           .addTo(map)
-          .bindPopup(`${esc(e.tankstelle_name ?? 'Tankstelle')}<br>${esc(e.datum)} – ${esc(e.preis_pro_liter)} €/l`);
+          .bindPopup(`${esc(e.tankstelle_name ?? 'Tankstelle')}<br>${fmtDate(e.datum)} – ${fmtNum(e.preis_pro_liter, 3)} €/l`);
         markers.push(marker);
       });
       if (withLocation.length) {

@@ -59,6 +59,12 @@ class Quelle(str, enum.Enum):
     CHAT_BOT = "chat-bot"
 
 
+class Fahrtzweck(str, enum.Enum):
+    PRIVAT = "Privat"
+    DIENSTLICH = "Dienstlich"
+    ARBEITSWEG = "Arbeitsweg"
+
+
 class Vehicle(Base):
     """Entspricht den Stammdaten oben in jedem Excel-Tabellenblatt
     (Amtl. Kennzeichen, Hersteller, Modell, Variante, Tankvolumen, ...)."""
@@ -91,6 +97,8 @@ class Vehicle(Base):
     fuel_entries: Mapped[list["FuelEntry"]] = relationship(back_populates="vehicle")
     other_costs: Mapped[list["OtherCost"]] = relationship(back_populates="vehicle")
     reminders: Mapped[list["MaintenanceReminder"]] = relationship(back_populates="vehicle")
+    logbook_entries: Mapped[list["LogbookEntry"]] = relationship(back_populates="vehicle")
+    trips: Mapped[list["Trip"]] = relationship(back_populates="vehicle")
 
 
 class FuelEntry(Base):
@@ -179,3 +187,49 @@ class MaintenanceReminder(Base):
     letzte_erledigung_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     vehicle: Mapped["Vehicle"] = relationship(back_populates="reminders")
+
+
+class LogbookEntry(Base):
+    """Wartungs-/Ereignislogbuch (digitales Serviceheft): was wann bei
+    welchem Kilometerstand am Fahrzeug gemacht wurde."""
+
+    __tablename__ = "logbook_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+
+    datum: Mapped[datetime.date] = mapped_column(Date)
+    kilometerstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eintrag: Mapped[str] = mapped_column(String(300))
+    notiz: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    erstellt_am: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+    vehicle: Mapped["Vehicle"] = relationship(back_populates="logbook_entries")
+
+
+class Trip(Base):
+    """Eine Fahrt im Fahrtenbuch. Nicht als steuerlich anerkanntes
+    elektronisches Fahrtenbuch gedacht - Eintraege sind nachtraeglich
+    aenderbar/loeschbar."""
+
+    __tablename__ = "trips"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+
+    datum: Mapped[datetime.date] = mapped_column(Date)
+    start: Mapped[str] = mapped_column(String(200))
+    ziel: Mapped[str] = mapped_column(String(200))
+    km_start: Mapped[int] = mapped_column(Integer)
+    km_ende: Mapped[int] = mapped_column(Integer)
+    zweck: Mapped[Fahrtzweck] = mapped_column(Enum(Fahrtzweck), default=Fahrtzweck.PRIVAT)
+    notiz: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    erstellt_am: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+    vehicle: Mapped["Vehicle"] = relationship(back_populates="trips")

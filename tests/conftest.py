@@ -15,7 +15,14 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.models import FuelEntry, MaintenanceReminder, OtherCost, Vehicle  # noqa: E402
+from app.models import (  # noqa: E402
+    FuelEntry,
+    LogbookEntry,
+    MaintenanceReminder,
+    OtherCost,
+    Trip,
+    Vehicle,
+)
 
 
 @pytest.fixture()
@@ -28,6 +35,8 @@ def db_session():
         session.query(FuelEntry).delete()
         session.query(OtherCost).delete()
         session.query(MaintenanceReminder).delete()
+        session.query(LogbookEntry).delete()
+        session.query(Trip).delete()
         session.query(Vehicle).delete()
         session.commit()
         yield session
