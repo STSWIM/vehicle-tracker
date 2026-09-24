@@ -544,6 +544,176 @@
       loadVehicles(saved.id);
     });
 
+    // === Excel-Import (Issue #16) ============================================
+    // Eigenstaendiger Block: ergaenzt den Fahrzeugdialog (nur beim Bearbeiten
+    // eines vorhandenen Fahrzeugs) um den Import der bisherigen
+    // Excel-Buchfuehrung. Ablauf: Datei waehlen -> Vorschau (dry_run) ->
+    // "Übernehmen" (echter Import) -> Daten neu laden.
+    (function setupExcelImport() {
+      const importStyle = document.createElement('style');
+      importStyle.textContent = `
+        #vt-vehicle-dialog .vt-import-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+        #vt-vehicle-dialog .vt-import-summary { margin: 0.5rem 0 0.3rem; }
+        #vt-vehicle-dialog .vt-import-warnings { font-size: 0.85rem; color: var(--color-warning, #9a6700); margin: 0.3rem 0; padding-left: 1.2rem; }
+        #vt-vehicle-dialog .vt-import-table { max-height: 280px; overflow: auto; }
+        #vt-vehicle-dialog .vt-import-table table { margin-top: 0.3rem; font-size: 0.8rem; }
+        #vt-vehicle-dialog .vt-import-table td.num { white-space: nowrap; }
+        #vt-vehicle-dialog .vt-import-table tr.dup { opacity: 0.5; }
+        #vt-vehicle-dialog details.vt-import-details summary { cursor: pointer; font-size: 0.85rem; }
+        #vt-vehicle-dialog .form-status.success { color: var(--color-success, #1a7f37); }
+        #vt-vehicle-dialog .form-status.warning { color: var(--color-warning, #9a6700); }
+      `;
+      document.head.appendChild(importStyle);
+
+      const section = document.createElement('div');
+      section.id = 'vt-import-section';
+      section.hidden = true;
+      section.innerHTML = `
+        <h4>Import</h4>
+        <div class="muted">Historische Tankungen und sonstige Kosten aus der bisherigen Excel-Buchführung (.xlsx) übernehmen.
+          Bereits erfasste Einträge werden erkannt und übersprungen.</div>
+        <div class="vt-import-actions">
+          <button type="button" id="vt-import-pick">Aus Excel importieren</button>
+          <input type="file" id="vt-import-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        </div>
+        <div class="form-status" id="vt-import-status"></div>
+        <div id="vt-import-preview"></div>`;
+      $('vt-vehicle-status').before(section);
+
+      let importFile = null;
+      let importVehicleId = null;
+      const KAUF_LABELS = { kaufpreis: 'Anschaffungspreis', kaufdatum: 'Kaufdatum', kaufkilometerstand: 'km-Stand bei Kauf' };
+
+      function resetImport() {
+        importFile = null;
+        importVehicleId = editingVehicleId;
+        section.hidden = editingVehicleId === null;
+        $('vt-import-file').value = '';
+        $('vt-import-preview').innerHTML = '';
+        $('vt-import-status').textContent = '';
+        $('vt-import-status').className = 'form-status';
+      }
+      // openVehicleDialog setzt editingVehicleId - diese Listener laufen danach.
+      $('vt-new-vehicle').addEventListener('click', resetImport);
+      $('vt-edit-vehicle').addEventListener('click', resetImport);
+
+      async function sendImport(dryRun) {
+        const data = new FormData();
+        data.append('file', importFile);
+        const res = await fetch(
+          `${BASE}/api/vehicles/${importVehicleId}/import/excel?dry_run=${dryRun ? 'true' : 'false'}`,
+          { method: 'POST', body: data }
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join(' / ') : body.detail;
+          showFormStatus($('vt-import-status'), 'error', detail || `Fehler (${res.status})`);
+          return null;
+        }
+        return body;
+      }
+
+      function kaufText(kauf) {
+        if (!kauf) return '';
+        const werte = [
+          kauf.kaufdatum && fmtDate(kauf.kaufdatum),
+          kauf.kaufpreis !== null && fmtEur(kauf.kaufpreis),
+          kauf.kaufkilometerstand !== null && `${fmtNum(kauf.kaufkilometerstand)} km`,
+        ].filter(Boolean).join(', ');
+        const uebernahme = kauf.uebernommen.length
+          ? `wird übernommen: ${kauf.uebernommen.map((k) => KAUF_LABELS[k] || k).join(', ')}`
+          : 'am Fahrzeug bereits eingetragen, bleibt unverändert';
+        return `<div class="muted">Kaufdaten aus der Datei (${esc(werte)}) – ${esc(uebernahme)}.</div>`;
+      }
+
+      function rowsTable(result) {
+        const rows = [
+          ...result.tankungen.map((t) => ({
+            datum: t.datum, dup: t.duplikat, art: `Tankung ${t.kraftstoffart}${t.nicht_voll ? ' (nicht voll)' : ''}`,
+            km: fmtNum(t.kilometerstand), menge: `${fmtNum(t.fuellmenge_liter, 2)} l`, betrag: t.gesamtpreis, text: t.quelle,
+          })),
+          ...result.kosten.map((c) => ({
+            datum: c.datum, dup: c.duplikat, art: c.kategorie, km: '', menge: '', betrag: c.betrag,
+            text: [c.beschreibung, c.quelle].filter(Boolean).join(' · '),
+          })),
+        ].sort((a, b) => a.datum.localeCompare(b.datum));
+        if (!rows.length) return '';
+        return `<details class="vt-import-details"><summary>Einträge anzeigen (${rows.length})</summary>
+          <div class="vt-import-table"><table>
+            <thead><tr><th>Datum</th><th>Art</th><th class="num">km</th><th class="num">Menge</th><th class="num">Betrag</th><th>Status</th><th>Beschreibung / Herkunft</th></tr></thead>
+            <tbody>${rows.map((r) => `<tr class="${r.dup ? 'dup' : ''}">
+              <td>${fmtDate(r.datum)}</td><td>${esc(r.art)}</td><td class="num">${r.km}</td><td class="num">${r.menge}</td>
+              <td class="num">${fmtEur(r.betrag)}</td><td>${r.dup ? 'Duplikat' : 'neu'}</td><td>${esc(r.text)}</td>
+            </tr>`).join('')}</tbody>
+          </table></div></details>`;
+      }
+
+      function renderPreview(result) {
+        const duplikate = result.tankungen_duplikate + result.kosten_duplikate;
+        const hatNeues = result.tankungen_neu + result.kosten_neu > 0 || (result.kauf && result.kauf.uebernommen.length);
+        const warnungen = result.warnungen.length
+          ? `<ul class="vt-import-warnings">${result.warnungen.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`
+          : '';
+        $('vt-import-preview').innerHTML = `
+          <div class="vt-import-summary">
+            <b>${result.tankungen_neu}</b> neue Tankungen · <b>${result.kosten_neu}</b> neue Kosten ·
+            ${duplikate} ${duplikate === 1 ? "Duplikat" : "Duplikate"} übersprungen
+          </div>
+          ${kaufText(result.kauf)}
+          ${warnungen}
+          ${rowsTable(result)}
+          <div class="vt-import-actions">
+            ${hatNeues ? '<button type="button" id="vt-import-apply" class="primary">Übernehmen</button>' : '<span class="muted">Nichts Neues zu übernehmen.</span>'}
+          </div>`;
+      }
+
+      $('vt-import-pick').addEventListener('click', () => $('vt-import-file').click());
+
+      $('vt-import-file').addEventListener('change', async (ev) => {
+        importFile = ev.target.files[0] || null;
+        $('vt-import-preview').innerHTML = '';
+        if (!importFile || importVehicleId === null) return;
+        showFormStatus($('vt-import-status'), '', `„${importFile.name}“ wird gelesen … (große Arbeitsmappen brauchen einige Sekunden)`);
+        $('vt-import-pick').disabled = true;
+        try {
+          const result = await sendImport(true);
+          if (!result) return;
+          $('vt-import-status').textContent = '';
+          renderPreview(result);
+        } finally {
+          $('vt-import-pick').disabled = false;
+        }
+      });
+
+      $('vt-import-preview').addEventListener('click', async (ev) => {
+        const button = ev.target.closest('#vt-import-apply');
+        if (!button || !importFile) return;
+        button.disabled = true;
+        showFormStatus($('vt-import-status'), '', 'Import läuft …');
+        const result = await sendImport(false);
+        if (!result) {
+          button.disabled = false;
+          return;
+        }
+        $('vt-import-preview').innerHTML = '';
+        showFormStatus(
+          $('vt-import-status'), 'success',
+          `✅ Importiert: ${result.tankungen_neu} Tankungen, ${result.kosten_neu} Kosten` +
+            (result.kauf && result.kauf.uebernommen.length ? ', Kaufdaten ergänzt.' : '.')
+        );
+        // Uebernommene Kaufdaten auch im offenen Formular eintragen, damit ein
+        // anschliessendes "Speichern" sie nicht wieder leert.
+        const form = $('vt-vehicle-form');
+        if (result.kauf) {
+          result.kauf.uebernommen.forEach((key) => { form.elements[key].value = result.kauf[key] ?? ''; });
+        }
+        importFile = null;
+        $('vt-import-file').value = '';
+        loadVehicles(importVehicleId);
+      });
+    })();
+    // === Ende Excel-Import ====================================================
+
     // --- Tankbeleg mit Mitrechnen --------------------------------------------
 
     // Aus zwei der drei Werte Menge/Preis/Gesamt wird der dritte berechnet.

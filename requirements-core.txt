@@ -22,3 +22,5 @@ piexif>=1.1.3          # EXIF/GPS-Auslesung aus Fotos
 
 # --- Export (CSV/PDF-Bericht) ---
 fpdf2>=2.7.6           # reines Python; Unicode-Schrift via fonts-dejavu-core (Dockerfile)
+# --- Excel-Import der bisherigen Buchfuehrung (Issue #16) ---
+openpyxl>=3.1
