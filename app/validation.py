@@ -9,6 +9,7 @@ landen.
 from __future__ import annotations
 
 import datetime
+import math
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -115,12 +116,102 @@ def pruefe_verbrauch(db: Session, entry: FuelEntry) -> list[str]:
     if historischer_schnitt:
         abweichung = abs(aktueller_verbrauch - historischer_schnitt) / historischer_schnitt
         if abweichung > VERBRAUCH_ABWEICHUNG_TOLERANZ:
-            return [
+            warnung = (
                 f"Verbrauch dieser Tankung ({aktueller_verbrauch:.1f} l/100km) weicht "
                 f"stark vom bisherigen Schnitt ({historischer_schnitt:.1f} l/100km) ab."
-            ]
+            )
+            if aktueller_verbrauch < historischer_schnitt:
+                warnung += _tankluecke_zusatz(db, entry)
+            return [warnung]
     elif not (MIN_PLAUSIBLER_VERBRAUCH <= aktueller_verbrauch <= MAX_PLAUSIBLER_VERBRAUCH):
-        return [
-            f"Verbrauch dieser Tankung ({aktueller_verbrauch:.1f} l/100km) wirkt unplausibel."
-        ]
+        warnung = f"Verbrauch dieser Tankung ({aktueller_verbrauch:.1f} l/100km) wirkt unplausibel."
+        if aktueller_verbrauch < MIN_PLAUSIBLER_VERBRAUCH:
+            warnung += _tankluecke_zusatz(db, entry)
+        return [warnung]
     return []
+
+
+# --- Tankluecken (Issue #12) ------------------------------------------------
+# Springt der Kilometerstand (aus Fahrten, Logbuch, ...) weiter, als das
+# Fahrzeug seit der letzten erfassten Tankung plausibel fahren kann, fehlt
+# vermutlich ein Tankbeleg. Die plausible Reichweite je Tankfuellung wird aus
+# den eigenen Abstaenden aufeinanderfolgender Tankungen abgeleitet (egal
+# welcher Kraftstoff - das Fahrzeug kann zwischendurch wechseln).
+
+REICHWEITE_FALLBACK_KM = 900  # solange weniger als 3 Tankungen erfasst sind
+REICHWEITE_MIN_KM = 300  # Untergrenze, damit Vieltanker nicht staendig Warnungen sehen
+REICHWEITE_PERZENTIL = 0.9
+REICHWEITE_AUFSCHLAG = 1.2
+
+
+def _fmt_km(km: int) -> str:
+    return f"{km:,}".replace(",", ".")
+
+
+def max_reichweite_km(db: Session, vehicle_id: int, *, exclude_entry_id: int | None = None) -> int:
+    """90. Perzentil (Nearest-Rank) der Abstaende zwischen aufeinander-
+    folgenden Tankungen x 1,2 - robust gegen einzelne echte Tankluecken in
+    der Historie, anders als das Maximum. Ausweichwert bei zu wenig Daten."""
+    q = select(FuelEntry.kilometerstand).where(FuelEntry.vehicle_id == vehicle_id)
+    if exclude_entry_id is not None:
+        q = q.where(FuelEntry.id != exclude_entry_id)
+    km_staende = sorted(db.execute(q).scalars().all())
+    if len(km_staende) < 3:
+        return REICHWEITE_FALLBACK_KM
+    abstaende = sorted(b - a for a, b in zip(km_staende, km_staende[1:]) if b > a)
+    if not abstaende:
+        return REICHWEITE_FALLBACK_KM
+    perzentil = abstaende[math.ceil(REICHWEITE_PERZENTIL * len(abstaende)) - 1]
+    return max(round(perzentil * REICHWEITE_AUFSCHLAG), REICHWEITE_MIN_KM)
+
+
+def _letzte_tankung(
+    db: Session, vehicle_id: int, km: int, datum: datetime.date, *, exclude_entry_id: int | None = None
+) -> FuelEntry | None:
+    q = (
+        select(FuelEntry)
+        .where(
+            FuelEntry.vehicle_id == vehicle_id,
+            FuelEntry.datum <= datum,
+            FuelEntry.kilometerstand <= km,
+        )
+        .order_by(FuelEntry.kilometerstand.desc(), FuelEntry.datum.desc())
+        .limit(1)
+    )
+    if exclude_entry_id is not None:
+        q = q.where(FuelEntry.id != exclude_entry_id)
+    return db.execute(q).scalars().first()
+
+
+def pruefe_tankluecke(db: Session, vehicle_id: int, km: int | None, datum: datetime.date) -> list[str]:
+    """Warnt (blockiert nicht), wenn ein Kilometerstand zum Datum weiter von
+    der letzten erfassten Tankung entfernt ist als die plausible Reichweite."""
+    if km is None:
+        return []
+    letzte = _letzte_tankung(db, vehicle_id, km, datum)
+    if letzte is None:
+        return []
+    strecke = km - letzte.kilometerstand
+    if strecke <= max_reichweite_km(db, vehicle_id):
+        return []
+    return [
+        f"Seit der letzten Tankung am {letzte.datum.strftime('%d.%m.%Y')} "
+        f"({_fmt_km(letzte.kilometerstand)} km) sind {_fmt_km(strecke)} km vergangen "
+        f"– fehlt ein Tankbeleg?"
+    ]
+
+
+def _tankluecke_zusatz(db: Session, entry: FuelEntry) -> str:
+    """Ergaenzt die Verbrauchswarnung bei zu niedrigem Verbrauch, wenn auch
+    die Strecke seit der vorigen Tankung (beliebiger Kraftstoff) laenger als
+    die plausible Reichweite ist - dann fehlt vermutlich eine Tankung
+    dazwischen. Eine eigene zweite Warnung waere doppelt, daher nur ein Zusatz."""
+    vorige = _letzte_tankung(
+        db, entry.vehicle_id, entry.kilometerstand - 1, entry.datum, exclude_entry_id=entry.id
+    )
+    if vorige is None:
+        return ""
+    strecke = entry.kilometerstand - vorige.kilometerstand
+    if strecke <= max_reichweite_km(db, entry.vehicle_id, exclude_entry_id=entry.id):
+        return ""
+    return f" Seit der vorigen Tankung sind {_fmt_km(strecke)} km vergangen – fehlt ein Tankbeleg dazwischen?"
