@@ -28,6 +28,7 @@ from nc_py_api.ex_app import atalk_bot_msg
 from nc_py_api.talk_bot import TalkBotMessage
 from sqlalchemy.orm import Session
 
+from app.access import CurrentUser, load_user, standalone_mode
 from app.db import SessionLocal
 from app.geocoding import extract_gps_from_photo, reverse_geocode
 from app.i18n import t
@@ -60,6 +61,17 @@ def _download_to_tempfile(url: str) -> str:
         return f.name
 
 
+async def _talk_user(message: TalkBotMessage) -> CurrentUser | None:
+    """Absender als Nextcloud-Nutzer; Gaeste/Federated-User haben keinen
+    Fahrzeugzugriff."""
+    if standalone_mode():
+        return CurrentUser(uid="dev", superuser=True)
+    kind, _, uid = message.actor_id.partition("/")
+    if kind != "users" or not uid:
+        return None
+    return await load_user(uid)
+
+
 async def _reply(message: TalkBotMessage, text: str) -> None:
     await bot.send_message(text, reply_to_message=message.object_id, token=message.conversation_token)
 
@@ -86,7 +98,8 @@ async def _handle_message(message: TalkBotMessage, db: Session) -> None:
 
     # 1) Fahrzeug-Zuordnung per Codewort, falls noch nicht gesetzt
     if session.vehicle_id is None:
-        vehicle = capture_session.resolve_vehicle_by_codewort(db, text)
+        user = await _talk_user(message)
+        vehicle = capture_session.resolve_vehicle_by_codewort(db, text, user) if user else None
         if vehicle:
             session.vehicle_id = vehicle.id
             if session.is_complete:

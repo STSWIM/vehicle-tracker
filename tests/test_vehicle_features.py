@@ -119,6 +119,46 @@ def test_fahrt_anlegen(client):
     assert client.get(f"/api/trips?vehicle_id={vehicle_id}").json()[0]["zweck"] == "Dienstlich"
 
 
+# --- Verbrauch ---------------------------------------------------------------
+
+def _fuel_art(client, vehicle_id, datum, km, liter, art):
+    response = client.post(
+        "/api/fuel-entries",
+        json={"vehicle_id": vehicle_id, "datum": datum, "kilometerstand": km, "kraftstoffart": art,
+              "fuellmenge_liter": liter, "preis_pro_liter": 1.0, "gesamtpreis": liter},
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_verbrauch_getrennt_nach_kraftstoff(client):
+    """LPG- und Benzin-Tankungen eines bivalenten Fahrzeugs duerfen nicht in
+    eine gemeinsame Voll-zu-Voll-Kette geraten."""
+    vehicle_id = _vehicle(client, kaufkilometerstand=None)
+    _fuel_art(client, vehicle_id, "2023-01-01", 1_000, 40.0, "LPG")
+    _fuel_art(client, vehicle_id, "2023-01-05", 1_100, 10.0, "Benzin")
+    _fuel_art(client, vehicle_id, "2023-01-20", 1_300, 42.0, "LPG")
+    _fuel_art(client, vehicle_id, "2023-02-01", 1_600, 6.0, "Benzin")
+
+    s = client.get(f"/api/vehicles/{vehicle_id}/stats").json()
+    assert s["verbrauch_nach_kraftstoff"] == {"LPG": 14.0, "Benzin": 1.2}
+    assert s["ø_verbrauch_l_100km"] is None  # mehrere Kraftstoffe -> kein Einzelwert
+
+
+def test_bei_kauf_vollgetankt_liefert_verbrauch_ab_erster_tankung(client):
+    vehicle_id = _vehicle(client, bei_kauf_vollgetankt=True)  # Kauf bei 158.000 km
+    _fuel_art(client, vehicle_id, "2022-07-01", 158_220, 30.37, "LPG")
+
+    s = client.get(f"/api/vehicles/{vehicle_id}/stats").json()
+    assert s["verbrauch_nach_kraftstoff"] == {"LPG": round(30.37 / 220 * 100, 2)}
+    assert s["ø_verbrauch_l_100km"] == round(30.37 / 220 * 100, 2)
+
+
+def test_ohne_vollgetankt_bei_kauf_kein_verbrauch_aus_einer_tankung(client):
+    vehicle_id = _vehicle(client)
+    _fuel_art(client, vehicle_id, "2022-07-01", 158_220, 30.37, "LPG")
+    assert client.get(f"/api/vehicles/{vehicle_id}/stats").json()["verbrauch_nach_kraftstoff"] == {}
+
+
 # --- Kostenauswertung --------------------------------------------------------
 
 def _setup_kosten(client):

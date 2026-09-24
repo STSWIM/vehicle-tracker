@@ -78,6 +78,31 @@
     #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
     #vehicle-tracker-root .form-status.success { color: var(--color-success, #1a7f37); }
     #vehicle-tracker-root button.link { background: none; border: none; padding: 0 0.3rem; cursor: pointer; min-height: 0; }
+
+    #vt-vehicle-dialog {
+      border: none; border-radius: var(--border-radius-large, 10px); padding: 1.25rem 1.5rem;
+      width: min(760px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem);
+      background: var(--color-main-background, #fff); color: var(--color-main-text, #222);
+      font-family: var(--font-face, system-ui, sans-serif);
+    }
+    #vt-vehicle-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+    #vt-vehicle-dialog h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+    #vt-vehicle-dialog h4 { margin: 1.25rem 0 0.5rem; font-size: 0.95rem; }
+    #vt-vehicle-dialog .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.6rem 0.9rem; }
+    #vt-vehicle-dialog label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
+    #vt-vehicle-dialog label.check { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+    #vt-vehicle-dialog input[type="date"] { min-width: 11em; }
+    #vt-vehicle-dialog .actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.25rem; }
+    #vt-vehicle-dialog .form-status { font-size: 0.85rem; margin-top: 0.5rem; }
+    #vt-vehicle-dialog .form-status.error { color: var(--color-error, #b3261e); }
+    #vt-vehicle-dialog .muted { font-size: 0.85rem; opacity: 0.75; }
+    #vt-vehicle-dialog .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
+    #vt-vehicle-dialog .chip { background: var(--color-background-dark, #eee); border-radius: 999px; padding: 0.2rem 0.4rem 0.2rem 0.7rem; display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; }
+    #vt-vehicle-dialog .chip button { background: none; border: none; min-height: 0; padding: 0 0.3rem; cursor: pointer; }
+    #vt-vehicle-dialog .suggestions { display: flex; flex-direction: column; border: 1px solid var(--color-border, #ddd); border-radius: 8px; margin-top: 0.3rem; max-width: 420px; }
+    #vt-vehicle-dialog .suggestions:empty { display: none; }
+    #vt-vehicle-dialog .suggestions button { text-align: left; background: none; border: none; border-radius: 0; padding: 0.45rem 0.7rem; cursor: pointer; }
+    #vt-vehicle-dialog .suggestions button:hover { background: var(--color-background-hover, #f2f2f2); }
   `;
 
   const MARKUP = `
@@ -85,6 +110,7 @@
       <header>
         <label for="vt-vehicle-select">Fahrzeug:</label>
         <select id="vt-vehicle-select"></select>
+        <button type="button" id="vt-new-vehicle">Anlegen</button>
         <button type="button" id="vt-edit-vehicle" hidden>Bearbeiten</button>
       </header>
 
@@ -102,27 +128,6 @@
       <div class="kategorien" id="vt-kategorien"></div>
 
       <h3>Erfassen</h3>
-      <details class="manual-entry" id="vt-vehicle-details">
-        <summary id="vt-vehicle-summary">Fahrzeug anlegen</summary>
-        <div class="section-body">
-          <form id="vt-vehicle-form">
-            <label>Kennzeichen <input type="text" name="kennzeichen" required></label>
-            <label>Hersteller <input type="text" name="hersteller" required></label>
-            <label>Modell <input type="text" name="modell" required></label>
-            <label>Variante <input type="text" name="variante"></label>
-            <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
-            <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
-            <label>Kaufdatum <input type="date" name="kaufdatum"></label>
-            <label>Anschaffungspreis (€) <input type="number" name="kaufpreis" step="0.01" min="0"></label>
-            <label>km-Stand bei Kauf <input type="number" name="kaufkilometerstand" min="0"></label>
-            <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
-            <button type="submit" id="vt-vehicle-submit">Anlegen</button>
-            <button type="button" id="vt-vehicle-cancel" hidden>Abbrechen</button>
-            <div class="form-status" id="vt-vehicle-status"></div>
-          </form>
-        </div>
-      </details>
-
       <details class="manual-entry">
         <summary>Tankbeleg</summary>
         <div class="section-body">
@@ -237,6 +242,37 @@
         <div id="vt-map"></div>
       </aside>
       </div>
+
+      <dialog id="vt-vehicle-dialog">
+        <form id="vt-vehicle-form">
+          <h2 id="vt-vehicle-dialog-title">Fahrzeug anlegen</h2>
+          <div class="grid">
+            <label>Kennzeichen <input type="text" name="kennzeichen" required></label>
+            <label>Hersteller <input type="text" name="hersteller" required></label>
+            <label>Modell <input type="text" name="modell" required></label>
+            <label>Variante <input type="text" name="variante"></label>
+            <label>Tank LPG (l) <input type="number" name="tankvolumen_lpg_l" step="0.1" min="0"></label>
+            <label>Tank Benzin (l) <input type="number" name="tankvolumen_benzin_l" step="0.1" min="0"></label>
+            <label>Kaufdatum <input type="date" name="kaufdatum"></label>
+            <label>Anschaffungspreis (€) <input type="number" name="kaufpreis" step="0.01" min="0"></label>
+            <label>km-Stand bei Kauf <input type="number" name="kaufkilometerstand" min="0"></label>
+            <label>Talk-Bot-Codewort <input type="text" name="bot_codewort" placeholder="z.B. previa"></label>
+          </div>
+          <label class="check" style="margin-top: 0.75rem;">
+            <input type="checkbox" name="bei_kauf_vollgetankt">
+            Bei Kauf vollgetankt (Kauf-km-Stand zählt als erste Volltankung für den Verbrauch)
+          </label>
+
+          <h4>Zugriff</h4>
+          <div id="vt-share-section"></div>
+
+          <div class="form-status" id="vt-vehicle-status"></div>
+          <div class="actions">
+            <button type="button" id="vt-vehicle-cancel">Abbrechen</button>
+            <button type="submit" id="vt-vehicle-submit" class="primary">Anlegen</button>
+          </div>
+        </form>
+      </dialog>
     </div>
   `;
 
@@ -292,6 +328,7 @@
       map = null;
     }
 
+    let me = { uid: '', standalone: false };
     let vehicles = [];
     let currentVehicleId = null;
     let editingVehicleId = null;
@@ -355,32 +392,124 @@
 
     // --- Fahrzeug anlegen / bearbeiten ---------------------------------------
 
-    function startEditVehicle() {
-      const vehicle = vehicles.find((v) => v.id === Number(currentVehicleId));
-      if (!vehicle) return;
-      editingVehicleId = vehicle.id;
-      const form = $('vt-vehicle-form');
-      for (const input of form.elements) {
-        if (input.name) input.value = vehicle[input.name] ?? '';
+    // Freigaben-Entwurf im Dialog; gespeichert wird erst mit dem Fahrzeug.
+    let shareDraft = [];
+    let canManageShares = false;
+
+    function renderShareSection(owner) {
+      const section = $('vt-share-section');
+      const chips = shareDraft
+        .map((s, i) => `<span class="chip">${s.share_type === 'group' ? '👥' : '👤'} ${esc(s.label || s.share_with)}${
+          canManageShares ? ` <button type="button" data-remove-share="${i}" title="Entfernen">×</button>` : ''
+        }</span>`)
+        .join('');
+      const ownerText = owner ? `Besitzer: ${esc(owner)}` : '';
+      if (!canManageShares) {
+        section.innerHTML = `<div class="muted">${ownerText} – nur der Besitzer kann Freigaben ändern.</div>
+          <div class="chips">${chips || '<span class="muted">Keine Freigaben.</span>'}</div>`;
+        return;
       }
-      $('vt-vehicle-summary').textContent = `Fahrzeug bearbeiten: ${vehicle.hersteller} ${vehicle.modell}`;
-      $('vt-vehicle-submit').textContent = 'Speichern';
-      $('vt-vehicle-cancel').hidden = false;
+      section.innerHTML = `
+        <div class="muted">${ownerText}${ownerText ? ' · ' : ''}Freigegebene Nutzer und Gruppen können alles sehen und erfassen.</div>
+        <div class="chips">${chips || '<span class="muted">Noch nicht freigegeben.</span>'}</div>
+        <input type="text" id="vt-share-search" placeholder="Nutzer oder Gruppe suchen …" autocomplete="off" style="max-width: 420px; width: 100%;">
+        <div class="suggestions" id="vt-share-suggestions"></div>`;
+    }
+
+    // Nextclouds eigene Nutzer-/Gruppensuche (wie beim Teilen von Dateien);
+    // laeuft im Browser mit der Nextcloud-Sitzung. Im Standalone-Modus gibt
+    // es sie nicht - dann bleibt die manuelle Eingabe per Enter.
+    const OC_ROOT = window.OC && typeof window.OC.webroot === 'string' ? window.OC.webroot : '';
+    async function searchSharees(term) {
+      const params = new URLSearchParams({ search: term, itemType: 'vehicle_tracker', itemId: '0', limit: '8' });
+      params.append('shareTypes[]', '0');
+      params.append('shareTypes[]', '1');
+      try {
+        const res = await fetch(`${OC_ROOT}/ocs/v2.php/core/autocomplete/get?${params}`, {
+          headers: { 'OCS-APIRequest': 'true', Accept: 'application/json' },
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.ocs.data.map((d) => ({
+          share_type: d.source === 'groups' ? 'group' : 'user',
+          share_with: d.id,
+          label: d.label && d.label !== d.id ? `${d.label} (${d.id})` : d.id,
+        }));
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function addShare(share) {
+      const exists = shareDraft.some((s) => s.share_type === share.share_type && s.share_with === share.share_with);
+      if (!exists) shareDraft.push(share);
+      renderShareSection(dialogOwner);
+      $('vt-share-search').focus();
+    }
+
+    let searchTimer = null;
+    let lastSuggestions = [];
+    $('vt-vehicle-dialog').addEventListener('input', (ev) => {
+      if (ev.target.id !== 'vt-share-search') return;
+      clearTimeout(searchTimer);
+      const term = ev.target.value.trim();
+      searchTimer = setTimeout(async () => {
+        lastSuggestions = term.length >= 2 ? await searchSharees(term) : [];
+        const box = $('vt-share-suggestions');
+        if (!box) return;
+        box.innerHTML = lastSuggestions
+          .map((s, i) => `<button type="button" data-add-share="${i}">${s.share_type === 'group' ? '👥 Gruppe' : '👤'} ${esc(s.label)}</button>`)
+          .join('');
+      }, 250);
+    });
+    $('vt-vehicle-dialog').addEventListener('keydown', (ev) => {
+      if (ev.target.id !== 'vt-share-search' || ev.key !== 'Enter') return;
+      ev.preventDefault(); // nicht das Fahrzeugformular absenden
+      const term = ev.target.value.trim();
+      if (!term) return;
+      addShare(lastSuggestions[0] || { share_type: 'user', share_with: term });
+    });
+    $('vt-vehicle-dialog').addEventListener('click', (ev) => {
+      const add = ev.target.closest('[data-add-share]');
+      if (add) addShare(lastSuggestions[Number(add.dataset.addShare)]);
+      const remove = ev.target.closest('[data-remove-share]');
+      if (remove) {
+        shareDraft.splice(Number(remove.dataset.removeShare), 1);
+        renderShareSection(dialogOwner);
+      }
+    });
+
+    let dialogOwner = null;
+
+    function openVehicleDialog(vehicle) {
+      const form = $('vt-vehicle-form');
+      form.reset();
+      editingVehicleId = vehicle ? vehicle.id : null;
+      if (vehicle) {
+        for (const input of form.elements) {
+          if (!input.name) continue;
+          if (input.type === 'checkbox') input.checked = Boolean(vehicle[input.name]);
+          else input.value = vehicle[input.name] ?? '';
+        }
+      }
+      dialogOwner = vehicle ? vehicle.owner : me.uid;
+      canManageShares = me.standalone || dialogOwner === me.uid;
+      shareDraft = vehicle ? vehicle.shares.map((s) => ({ ...s })) : [];
+      lastSuggestions = [];
+      renderShareSection(dialogOwner);
+      $('vt-vehicle-dialog-title').textContent = vehicle
+        ? `Fahrzeug bearbeiten: ${vehicle.hersteller} ${vehicle.modell}`
+        : 'Fahrzeug anlegen';
+      $('vt-vehicle-submit').textContent = vehicle ? 'Speichern' : 'Anlegen';
       $('vt-vehicle-status').textContent = '';
-      $('vt-vehicle-details').open = true;
-      $('vt-vehicle-details').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      $('vt-vehicle-dialog').showModal();
     }
 
-    function stopEditVehicle() {
-      editingVehicleId = null;
-      $('vt-vehicle-form').reset();
-      $('vt-vehicle-summary').textContent = 'Fahrzeug anlegen';
-      $('vt-vehicle-submit').textContent = 'Anlegen';
-      $('vt-vehicle-cancel').hidden = true;
-    }
-
-    $('vt-edit-vehicle').addEventListener('click', startEditVehicle);
-    $('vt-vehicle-cancel').addEventListener('click', stopEditVehicle);
+    $('vt-new-vehicle').addEventListener('click', () => openVehicleDialog(null));
+    $('vt-edit-vehicle').addEventListener('click', () =>
+      openVehicleDialog(vehicles.find((v) => v.id === Number(currentVehicleId)))
+    );
+    $('vt-vehicle-cancel').addEventListener('click', () => $('vt-vehicle-dialog').close());
 
     onSubmit('vt-vehicle-form', async (form) => {
       const editing = editingVehicleId !== null;
@@ -391,10 +520,22 @@
         $('vt-vehicle-status'),
         editing ? 'PUT' : 'POST'
       );
-      if (saved) {
-        stopEditVehicle();
-        loadVehicles(saved.id);
+      if (!saved) return;
+      if (canManageShares) {
+        const res = await fetch(`${BASE}/api/vehicles/${saved.id}/shares`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(shareDraft.map(({ share_type, share_with }) => ({ share_type, share_with }))),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          showFormStatus($('vt-vehicle-status'), 'error', `Fahrzeug gespeichert, Freigaben nicht: ${body.detail || res.status}`);
+          editingVehicleId = saved.id;
+          return;
+        }
       }
+      $('vt-vehicle-dialog').close();
+      loadVehicles(saved.id);
     });
 
     // --- Tankbeleg mit Mitrechnen --------------------------------------------
@@ -487,6 +628,19 @@
       if (requestId === statsRequestId) renderStats(s);
     }
 
+    function verbrauchCards(verbrauchJeArt) {
+      const eintraege = Object.entries(verbrauchJeArt || {});
+      if (!eintraege.length) {
+        return [
+          `<div class="stat" title="Braucht zwei Volltankungen desselben Kraftstoffs – oder am Fahrzeug „Bei Kauf vollgetankt" plus eine Volltankung.">` +
+            `<b>–</b>Ø Verbrauch/100 km</div>`,
+        ];
+      }
+      return eintraege.map(
+        ([art, wert]) => `<div class="stat"><b>${fmtNum(wert, 2)} l</b>Ø ${esc(art)}/100 km</div>`
+      );
+    }
+
     function renderStats(s) {
       const card = (value, label, muted = false) =>
         `<div class="stat${muted ? ' muted' : ''}"><b>${value}</b>${label}</div>`;
@@ -498,7 +652,7 @@
         card(`${fmtNum(s.gefahrene_km)} km`, 'Gefahren'),
         card(s.kosten_pro_km === null ? '–' : `${fmtNum(s.kosten_pro_km, 3)} €`, 'Kosten/km'),
         card(fmtEur(s.kosten_pro_monat), 'Kosten/Monat'),
-        card(s.ø_verbrauch_l_100km === null ? '–' : `${fmtNum(s.ø_verbrauch_l_100km, 2)} l`, 'Ø Verbrauch/100 km'),
+        ...verbrauchCards(s.verbrauch_nach_kraftstoff),
       ].join('');
       const kategorien = Object.entries(s.kosten_nach_kategorie)
         .map(([name, betrag]) => `${esc(name)}: ${fmtEur(betrag)}`)
@@ -515,17 +669,13 @@
       select.innerHTML = vehicles
         .map((v) => `<option value="${v.id}">${esc(v.hersteller)} ${esc(v.modell)} (${esc(v.kennzeichen)})</option>`)
         .join('');
-      select.onchange = () => {
-        stopEditVehicle();
-        loadVehicle(select.value);
-      };
+      select.onchange = () => loadVehicle(select.value);
       $('vt-edit-vehicle').hidden = !vehicles.length;
 
       if (!vehicles.length) {
         currentVehicleId = null;
         $('vt-stats').innerHTML =
-          '<div class="hint">Noch kein Fahrzeug angelegt – bitte zuerst unter „Fahrzeug anlegen" eintragen.</div>';
-        $('vt-vehicle-details').open = true;
+          '<div class="hint">Noch kein Fahrzeug – über „Anlegen" oben eines erfassen, oder den Besitzer eines Fahrzeugs um eine Freigabe bitten.</div>';
         return;
       }
       const target = vehicles.some((v) => v.id === selectId) ? selectId : vehicles[0].id;
@@ -619,6 +769,11 @@
       }
     }
 
+    try {
+      me = await fetch(`${BASE}/api/me`).then((r) => r.json());
+    } catch (e) {
+      // ohne Nutzerinfo bleiben Freigaben im Dialog nur lesbar
+    }
     loadVehicles();
   }
 

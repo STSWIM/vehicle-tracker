@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models import ErinnerungsTyp, Fahrtzweck, Kostenkategorie, Kraftstoffart, Quelle
+from app.models import ErinnerungsTyp, Fahrtzweck, Kostenkategorie, Kraftstoffart, Quelle, ShareType
 
 
 class VehicleCreate(BaseModel):
@@ -18,13 +18,36 @@ class VehicleCreate(BaseModel):
     kaufdatum: datetime.date | None = None
     kaufpreis: float | None = None
     kaufkilometerstand: int | None = Field(default=None, ge=0)
+    bei_kauf_vollgetankt: bool = False
     bot_codewort: str | None = None
+
+
+class ShareIn(BaseModel):
+    share_type: ShareType
+    share_with: str = Field(min_length=1, max_length=255)
+
+
+class ShareOut(ShareIn):
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VehicleOut(VehicleCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     aktiv: bool
+    owner: str | None = None
+    shares: list[ShareOut] = []
+
+    @field_validator("bei_kauf_vollgetankt", mode="before")
+    @classmethod
+    def _none_als_false(cls, value: bool | None) -> bool:
+        # Spalte ist nullable, weil sie per add_missing_columns nachgezogen wird.
+        return bool(value)
+
+
+class CurrentUserOut(BaseModel):
+    uid: str
+    standalone: bool
 
 
 class FuelEntryCreate(BaseModel):
@@ -140,6 +163,9 @@ class VehicleStats(BaseModel):
     anschaffungskosten: float
     kosten_nach_kategorie: dict[str, float]
     gesamtkosten: float
+    # Voll-zu-Voll je Kraftstoff (bivalente Fahrzeuge wie LPG+Benzin getrennt);
+    # ø_verbrauch_l_100km nur gesetzt, wenn genau ein Kraftstoff einen Wert hat.
+    verbrauch_nach_kraftstoff: dict[str, float]
     ø_verbrauch_l_100km: float | None
     kosten_pro_km: float | None
     kosten_pro_monat: float | None

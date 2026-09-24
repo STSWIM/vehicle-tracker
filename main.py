@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 from app.db import init_db  # noqa: E402
-from app.routers import fuel_entries, logbook, other_costs, reminders, stats, trips, vehicles  # noqa: E402
+from app.routers import fuel_entries, logbook, me, other_costs, reminders, stats, trips, vehicles  # noqa: E402
 from app.talk_bot.webhook import router as talk_bot_router  # noqa: E402
 
 STANDALONE_MODE = os.environ.get("STANDALONE_MODE", "true").lower() == "true"
@@ -43,6 +43,7 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(stats.router)
     app.include_router(logbook.router)
     app.include_router(trips.router)
+    app.include_router(me.router)
     app.include_router(talk_bot_router)
     app.mount("/ui", StaticFiles(directory="frontend/static", html=True), name="ui")
 

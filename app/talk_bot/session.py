@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.access import CurrentUser, accessible_vehicles_query
 from app.i18n import t
 from app.models import FuelEntry, Quelle, Vehicle
 from app.ocr.parser import BelegVorschlag, TachoVorschlag
@@ -56,11 +57,11 @@ def clear_session(conversation_token: str) -> None:
     _sessions.pop(conversation_token, None)
 
 
-def resolve_vehicle_by_codewort(db: Session, codewort: str) -> Vehicle | None:
-    from sqlalchemy import select
-
+def resolve_vehicle_by_codewort(db: Session, codewort: str, user: CurrentUser) -> Vehicle | None:
+    """Nur Fahrzeuge, auf die der Absender Zugriff hat - sonst koennte jeder,
+    der das Codewort kennt, Eintraege fuer fremde Fahrzeuge anlegen."""
     return db.execute(
-        select(Vehicle).where(Vehicle.bot_codewort == codewort.lower())
+        accessible_vehicles_query(user).where(Vehicle.bot_codewort == codewort.strip().lower())
     ).scalar_one_or_none()
 
 

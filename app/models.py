@@ -18,6 +18,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -83,7 +84,13 @@ class Vehicle(Base):
     kaufdatum: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     kaufpreis: Mapped[float | None] = mapped_column(Float, nullable=True)
     kaufkilometerstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Kauf-km-Stand gilt dann als erste Volltankung (je Kraftstoff) fuer die
+    # Voll-zu-Voll-Verbrauchsberechnung.
+    bei_kauf_vollgetankt: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     verkauft_am: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+
+    # Nextcloud-User-ID. Nur der Besitzer verwaltet Freigaben (VehicleShare).
+    owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Zuordnung fuer den Talk-Bot: z.B. Codewort "previa" oder feste Raum-ID,
     # damit ankommende Fotos automatisch dem richtigen Fahrzeug zugeordnet werden.
@@ -99,6 +106,30 @@ class Vehicle(Base):
     reminders: Mapped[list["MaintenanceReminder"]] = relationship(back_populates="vehicle")
     logbook_entries: Mapped[list["LogbookEntry"]] = relationship(back_populates="vehicle")
     trips: Mapped[list["Trip"]] = relationship(back_populates="vehicle")
+    shares: Mapped[list["VehicleShare"]] = relationship(
+        back_populates="vehicle", cascade="all, delete-orphan"
+    )
+
+
+class ShareType(str, enum.Enum):
+    USER = "user"
+    GROUP = "group"
+
+
+class VehicleShare(Base):
+    """Freigabe eines Fahrzeugs an einen Nextcloud-Nutzer oder eine -Gruppe.
+    Freigegebene haben volle Nutzung, nur Freigaben verwalten darf allein
+    der Besitzer."""
+
+    __tablename__ = "vehicle_shares"
+    __table_args__ = (UniqueConstraint("vehicle_id", "share_type", "share_with"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+    share_type: Mapped[ShareType] = mapped_column(Enum(ShareType))
+    share_with: Mapped[str] = mapped_column(String(255))
+
+    vehicle: Mapped["Vehicle"] = relationship(back_populates="shares")
 
 
 class FuelEntry(Base):

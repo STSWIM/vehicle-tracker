@@ -83,6 +83,9 @@ def pruefe_verbrauch(db: Session, entry: FuelEntry) -> list[str]:
             select(FuelEntry)
             .where(
                 FuelEntry.vehicle_id == entry.vehicle_id,
+                # je Kraftstoff getrennt, sonst vermischt ein bivalentes
+                # Fahrzeug (LPG + Benzin) die Volltank-Ketten
+                FuelEntry.kraftstoffart == entry.kraftstoffart,
                 FuelEntry.kilometerstand < entry.kilometerstand,
                 FuelEntry.id != entry.id,
             )

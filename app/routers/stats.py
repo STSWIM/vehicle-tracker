@@ -18,12 +18,13 @@ from __future__ import annotations
 import datetime
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.consumption import verbrauch_l_pro_100km
+from app.access import CurrentUser, get_accessible_vehicle, get_current_user
+from app.consumption import verbrauch_nach_kraftstoff
 from app.db import get_db
-from app.models import Kostenkategorie, Kraftstoffart, Vehicle
+from app.models import Kostenkategorie, Kraftstoffart
 from app.schemas import VehicleStats
 
 router = APIRouter(prefix="/api/vehicles", tags=["stats"])
@@ -36,10 +37,9 @@ def get_vehicle_stats(
     bis: datetime.date | None = None,
     mit_anschaffung: bool = True,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> VehicleStats:
-    vehicle = db.get(Vehicle, vehicle_id)
-    if vehicle is None:
-        raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+    vehicle = get_accessible_vehicle(db, vehicle_id, user)
 
     def im_zeitraum(datum: datetime.date) -> bool:
         return (von is None or datum >= von) and (bis is None or datum <= bis)
@@ -93,7 +93,13 @@ def get_vehicle_stats(
     anteil_benzin = kosten_benzin / gesamt_kraftstoffkosten if gesamt_kraftstoffkosten else None
 
     kosten_pro_km = gesamtkosten / gefahrene_km if gefahrene_km > 0 else None
-    verbrauch = verbrauch_l_pro_100km(fuel_entries)
+    start_km = (
+        vehicle.kaufkilometerstand
+        if vehicle.bei_kauf_vollgetankt and kauf_im_zeitraum
+        else None
+    )
+    verbrauch_je_art = verbrauch_nach_kraftstoff(fuel_entries, start_km)
+    verbrauch = next(iter(verbrauch_je_art.values())) if len(verbrauch_je_art) == 1 else None
 
     return VehicleStats(
         vehicle_id=vehicle_id,
@@ -106,6 +112,7 @@ def get_vehicle_stats(
         anschaffungskosten=round(anschaffungskosten, 2),
         kosten_nach_kategorie={k: round(v, 2) for k, v in kosten_nach_kategorie.items()},
         gesamtkosten=round(gesamtkosten, 2),
+        verbrauch_nach_kraftstoff={k: round(v, 2) for k, v in verbrauch_je_art.items()},
         ø_verbrauch_l_100km=round(verbrauch, 2) if verbrauch is not None else None,
         kosten_pro_km=round(kosten_pro_km, 3) if kosten_pro_km is not None else None,
         kosten_pro_monat=round(kosten_pro_monat, 2) if kosten_pro_monat is not None else None,
