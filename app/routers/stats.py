@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.access import CurrentUser, get_accessible_vehicle, get_current_user
 from app.consumption import verbrauch_nach_kraftstoff
 from app.db import get_db
-from app.models import Kostenkategorie, Kraftstoffart
+from app.models import Kostenkategorie, Kraftstoffart, Vehicle
 from app.schemas import VehicleStats
 
 router = APIRouter(prefix="/api/vehicles", tags=["stats"])
@@ -40,6 +40,19 @@ def get_vehicle_stats(
     user: CurrentUser = Depends(get_current_user),
 ) -> VehicleStats:
     vehicle = get_accessible_vehicle(db, vehicle_id, user)
+    return compute_vehicle_stats(vehicle, von, bis, mit_anschaffung)
+
+
+def compute_vehicle_stats(
+    vehicle: Vehicle,
+    von: datetime.date | None = None,
+    bis: datetime.date | None = None,
+    mit_anschaffung: bool = True,
+) -> VehicleStats:
+    """Kennzahlen eines Fahrzeugs fuer den Zeitraum - auch vom Export
+    (app/export.py) genutzt, damit der PDF-Bericht dieselben Zahlen zeigt
+    wie die Auswertung in der Oberflaeche."""
+    vehicle_id = vehicle.id
 
     def im_zeitraum(datum: datetime.date) -> bool:
         return (von is None or datum >= von) and (bis is None or datum <= bis)

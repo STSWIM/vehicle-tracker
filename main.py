@@ -30,6 +30,7 @@ load_dotenv()
 
 from app.db import init_db  # noqa: E402
 from app.routers import fuel_entries, logbook, me, other_costs, reminders, stats, trips, vehicles  # noqa: E402
+from app.routers import export as export_router  # noqa: E402
 from app.talk_bot.webhook import router as talk_bot_router  # noqa: E402
 
 STANDALONE_MODE = os.environ.get("STANDALONE_MODE", "true").lower() == "true"
@@ -44,6 +45,7 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(logbook.router)
     app.include_router(trips.router)
     app.include_router(me.router)
+    app.include_router(export_router.router)
     app.include_router(talk_bot_router)
     app.mount("/ui", StaticFiles(directory="frontend/static", html=True), name="ui")
 
