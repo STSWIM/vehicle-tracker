@@ -45,7 +45,14 @@
     }
     #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     #vehicle-tracker-root h3 { margin: 1.25rem 0 0.25rem; font-size: 1rem; }
-    #vehicle-tracker-root #vt-map { height: 320px; margin-top: 0.75rem; border-radius: 8px; }
+    #vehicle-tracker-root .vt-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 40%); gap: 1.5rem; align-items: start; }
+    #vehicle-tracker-root .vt-side { position: sticky; top: 0.75rem; }
+    #vehicle-tracker-root #vt-map { height: 70vh; min-height: 320px; border-radius: 8px; }
+    @media (max-width: 1000px) {
+      #vehicle-tracker-root .vt-layout { grid-template-columns: minmax(0, 1fr); }
+      #vehicle-tracker-root .vt-side { position: static; }
+      #vehicle-tracker-root #vt-map { height: 320px; }
+    }
     #vehicle-tracker-root table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
     #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border, #eee); }
     #vehicle-tracker-root td.num, #vehicle-tracker-root th.num { text-align: right; }
@@ -81,6 +88,8 @@
         <button type="button" id="vt-edit-vehicle" hidden>Bearbeiten</button>
       </header>
 
+      <div class="vt-layout">
+      <div class="vt-main">
       <h3>Kostenauswertung</h3>
       <div class="auswertung-controls">
         <label><input type="radio" name="vt-zeitraum" value="gesamt" checked> Gesamter Zeitraum</label>
@@ -215,13 +224,19 @@
       </details>
 
       <h3>Tankbuch</h3>
-      <div id="vt-map"></div>
       <table id="vt-entries">
         <thead>
           <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th></tr>
         </thead>
         <tbody></tbody>
       </table>
+      </div>
+
+      <aside class="vt-side">
+        <h3>Tankstellen</h3>
+        <div id="vt-map"></div>
+      </aside>
+      </div>
     </div>
   `;
 
@@ -272,7 +287,8 @@
       // Initialisierung - ohne Neuvermessung bleibt die Karte teilweise grau.
       new ResizeObserver(() => map.invalidateSize()).observe($('vt-map'));
     } catch (e) {
-      $('vt-map').remove();
+      document.querySelector('#vehicle-tracker-root .vt-side').remove();
+      document.querySelector('#vehicle-tracker-root .vt-layout').style.gridTemplateColumns = 'minmax(0, 1fr)';
       map = null;
     }
 
@@ -599,7 +615,7 @@
         markers.push(marker);
       });
       if (withLocation.length) {
-        map.fitBounds(withLocation.map((e) => [e.lat, e.lon]), { padding: [30, 30] });
+        map.fitBounds(withLocation.map((e) => [e.lat, e.lon]), { padding: [30, 30], maxZoom: 13 });
       }
     }
 
