@@ -676,6 +676,81 @@
       el.hidden = !liste.length;
     }
     // --- Ende Tankluecken-Hinweise -------------------------------------------
+    // === Export: CSV / PDF-Bericht (Issue #14) ==============================
+    // Eigenstaendiger Block: haengt zwei Buttons an die Auswertungs-Leiste und
+    // nutzt deren Zeitraum und "Anschaffungskosten einbeziehen". Download per
+    // fetch + Blob statt eines Links, damit die Anfrage genauso durch den
+    // AppAPI-Proxy geht wie alle anderen API-Aufrufe (Nextcloud-Session,
+    // von Nextcloud automatisch ergaenzter requesttoken).
+    (function setupExport() {
+      const controls = document.querySelector('#vehicle-tracker-root .auswertung-controls');
+      if (!controls) return;
+      const exportStyle = document.createElement('style');
+      exportStyle.textContent = `
+        #vehicle-tracker-root .vt-export { display: inline-flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-left: auto; }
+        #vehicle-tracker-root .vt-export-status { font-size: 0.85rem; color: var(--color-error, #b3261e); }
+      `;
+      document.head.appendChild(exportStyle);
+      const wrap = document.createElement('span');
+      wrap.className = 'vt-export';
+      wrap.innerHTML =
+        '<button type="button" data-export="csv" title="Alle Einträge des gewählten Zeitraums als CSV (für Excel)">CSV exportieren</button>' +
+        '<button type="button" data-export="pdf" title="Bericht mit Kennzahlen, Kosten, Wartungshistorie und Fahrten">PDF-Bericht</button>' +
+        '<span class="vt-export-status" role="status"></span>';
+      controls.appendChild(wrap);
+      const status = wrap.querySelector('.vt-export-status');
+
+      function exportParams(format) {
+        const params = new URLSearchParams();
+        if (document.querySelector('input[name="vt-zeitraum"]:checked').value === 'auswahl') {
+          if ($('vt-von').value) params.set('von', $('vt-von').value);
+          if ($('vt-bis').value) params.set('bis', $('vt-bis').value);
+        }
+        if (format === 'pdf') params.set('mit_anschaffung', $('vt-mit-anschaffung').checked ? 'true' : 'false');
+        return params;
+      }
+
+      function filenameFrom(res, fallback) {
+        const header = res.headers.get('Content-Disposition') || '';
+        const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8) {
+          try { return decodeURIComponent(utf8[1]); } catch (e) { /* weiter mit filename= */ }
+        }
+        const plain = header.match(/filename="?([^";]+)"?/i);
+        return plain ? plain[1] : fallback;
+      }
+
+      async function download(format, button) {
+        if (!currentVehicleId) return;
+        status.textContent = '';
+        button.disabled = true;
+        try {
+          const res = await fetch(`${BASE}/api/vehicles/${currentVehicleId}/export.${format}?${exportParams(format)}`);
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            status.textContent = `Export fehlgeschlagen: ${body.detail || res.status}`;
+            return;
+          }
+          const url = URL.createObjectURL(await res.blob());
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filenameFrom(res, `fahrzeug-export.${format}`);
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch (e) {
+          status.textContent = 'Export fehlgeschlagen (keine Verbindung).';
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      wrap.querySelectorAll('button[data-export]').forEach((button) => {
+        button.addEventListener('click', () => download(button.dataset.export, button));
+      });
+    })();
+    // === Ende Export ==========================================================
 
     // --- Laden & Rendern -----------------------------------------------------
 
