@@ -88,6 +88,15 @@
       background: var(--color-main-background, #fff); color: var(--color-main-text, #222);
       font-family: var(--font-face, system-ui, sans-serif);
     }
+    /* Nextclouds eigenes CSS ueberschreibt die Browser-Vorgaben fuer <dialog>:
+       ohne diese Regeln steht der geschlossene Dialog sichtbar unten links auf
+       der Seite und der geoeffnete klebt am Rand statt mittig. */
+    #vt-vehicle-dialog:not([open]) { display: none !important; }
+    #vt-vehicle-dialog[open] {
+      display: block; position: fixed; inset: 0; margin: auto;
+      height: fit-content; overflow: auto; z-index: 10000; box-sizing: border-box;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
     #vt-vehicle-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
     #vt-vehicle-dialog h2 { margin: 0 0 1rem; font-size: 1.15rem; }
     #vt-vehicle-dialog h4 { margin: 1.25rem 0 0.5rem; font-size: 0.95rem; }
