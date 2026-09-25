@@ -26,6 +26,7 @@ from app.excel_import import (
     ExcelImportError,
     ImportFuelEntry,
     ImportOtherCost,
+    km_ausreisser,
     km_konflikte,
     parse_workbook,
 )
@@ -47,6 +48,9 @@ class ImportFuelRow(BaseModel):
     nicht_voll: bool
     quelle: str
     duplikat: bool
+    # Grund, falls die Zeile wegen eines unpassenden km-Stands nicht
+    # uebernommen wird (vermutlich Tippfehler in der Excel)
+    uebersprungen: str | None = None
 
 
 class ImportCostRow(BaseModel):
@@ -72,6 +76,7 @@ class ImportResult(BaseModel):
     dry_run: bool
     tankungen_neu: int
     tankungen_duplikate: int
+    tankungen_uebersprungen: int = 0
     kosten_neu: int
     kosten_duplikate: int
     tankungen: list[ImportFuelRow]
@@ -159,19 +164,33 @@ def import_excel(
             uebernommen=sorted(kauf_updates),
         )
 
-    # km-Staende: Gesamtbestand chronologisch pruefen (statt Einzelpruefung)
-    punkte = [(e.datum, e.kilometerstand, f"Tankung vom {e.datum:%d.%m.%Y}", False) for e in vorhandene_tankungen]
-    punkte += [(r.datum, r.kilometerstand, r.quelle, True) for r in neue_tankungen]
-    fehler = km_konflikte(punkte)
+    # km-Staende: Gesamtbestand chronologisch pruefen (statt Einzelpruefung).
+    # Einzelne Ausreisser (Tippfehler) werden uebersprungen; passt dagegen ein
+    # groesserer Teil nicht, stimmt vermutlich grundsaetzlich etwas nicht und
+    # der Import wird wie bisher abgelehnt.
+    warnungen = list(preview.warnungen)
     kauf_km = kauf_updates.get("kaufkilometerstand", vehicle.kaufkilometerstand)
-    if kauf_km is not None:
-        fehler += [
-            f"{r.quelle}: {r.kilometerstand} km liegt unter dem km-Stand beim Kauf ({kauf_km} km)."
-            for r in neue_tankungen
-            if r.kilometerstand < kauf_km
-        ][:5]
-    if fehler:
+    for r in neue_tankungen:
+        if kauf_km is not None and r.kilometerstand < kauf_km:
+            r.uebersprungen = f"liegt unter dem km-Stand beim Kauf ({kauf_km:,} km)".replace(",", ".")
+    kandidaten = [r for r in neue_tankungen if r.uebersprungen is None]
+    punkte = [(e.datum, e.kilometerstand, False) for e in vorhandene_tankungen]
+    punkte += [(r.datum, r.kilometerstand, True) for r in kandidaten]
+    for index in km_ausreisser(punkte):
+        kandidaten[index - len(vorhandene_tankungen)].uebersprungen = "passt nicht zu den übrigen Kilometerständen"
+    uebersprungen = [r for r in neue_tankungen if r.uebersprungen]
+    if len(uebersprungen) > max(2, len(neue_tankungen) // 10):
+        rest = [r for r in neue_tankungen if not r.uebersprungen]
+        punkte = [(e.datum, e.kilometerstand, f"Tankung vom {e.datum:%d.%m.%Y}", False) for e in vorhandene_tankungen]
+        punkte += [(r.datum, r.kilometerstand, r.quelle, True) for r in rest + uebersprungen]
+        fehler = km_konflikte(punkte) or [f"{r.quelle}: {r.uebersprungen}." for r in uebersprungen[:5]]
         raise HTTPException(400, "Kilometerstände sinken – Import abgelehnt. " + " ".join(fehler))
+    for r in uebersprungen:
+        warnungen.append(
+            f"Übersprungen – {r.quelle}: {r.kilometerstand:,} km am {r.datum:%d.%m.%Y} {r.uebersprungen} "
+            "(Tippfehler?). Bitte nach dem Import korrigiert von Hand erfassen.".replace(",", ".")
+        )
+    neue_tankungen = [r for r in neue_tankungen if not r.uebersprungen]
 
     if not dry_run:
         try:
@@ -179,7 +198,7 @@ def import_excel(
                 db.add(
                     FuelEntry(
                         vehicle_id=vehicle_id,
-                        **r.model_dump(exclude={"quelle", "duplikat"}),
+                        **r.model_dump(exclude={"quelle", "duplikat", "uebersprungen"}),
                         quelle=Quelle.MANUELL,
                         erfasst_von=user.uid,
                     )
@@ -203,11 +222,12 @@ def import_excel(
     return ImportResult(
         dry_run=dry_run,
         tankungen_neu=len(neue_tankungen),
-        tankungen_duplikate=len(tank_rows) - len(neue_tankungen),
+        tankungen_duplikate=sum(r.duplikat for r in tank_rows),
+        tankungen_uebersprungen=len(uebersprungen),
         kosten_neu=len(neue_kosten),
         kosten_duplikate=len(cost_rows) - len(neue_kosten),
         tankungen=tank_rows,
         kosten=cost_rows,
         kauf=kauf,
-        warnungen=preview.warnungen,
+        warnungen=warnungen,
     )

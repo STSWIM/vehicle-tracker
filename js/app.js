@@ -74,7 +74,7 @@
     #vehicle-tracker-root .stat.muted { opacity: 0.55; }
     #vehicle-tracker-root .kategorien { font-size: 0.85rem; opacity: 0.8; }
     /* Tankluecken-Hinweise (Issue #12) */
-    #vehicle-tracker-root .vt-hinweise { font-size: 0.85rem; color: var(--color-warning, #9a6700); padding: 0.35rem 0 0; }
+    #vehicle-tracker-root .vt-hinweise { font-size: 0.85rem; color: var(--color-warning-text, #9a6700); padding: 0.35rem 0 0; }
     #vehicle-tracker-root .vt-hinweise div + div { margin-top: 0.2rem; }
     #vehicle-tracker-root .hint { padding: 0.75rem 0; opacity: 0.8; }
     #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; }
@@ -86,8 +86,8 @@
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
     #vehicle-tracker-root .form-hint { flex-basis: 100%; font-size: 0.8rem; opacity: 0.7; }
     #vehicle-tracker-root input.vt-computed { font-style: italic; }
-    #vehicle-tracker-root .form-status.error { color: var(--color-error, #b3261e); }
-    #vehicle-tracker-root .form-status.warning { color: var(--color-warning, #9a6700); }
+    #vehicle-tracker-root .form-status.error { color: var(--color-error-text, #b3261e); }
+    #vehicle-tracker-root .form-status.warning { color: var(--color-warning-text, #9a6700); }
     #vehicle-tracker-root .form-status.success { color: var(--color-success, #1a7f37); }
     #vehicle-tracker-root button.link { background: none; border: none; padding: 0 0.3rem; cursor: pointer; min-height: 0; }
 
@@ -115,7 +115,7 @@
     #vt-vehicle-dialog input[type="date"] { min-width: 11em; }
     #vt-vehicle-dialog .actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.25rem; }
     #vt-vehicle-dialog .form-status { font-size: 0.85rem; margin-top: 0.5rem; }
-    #vt-vehicle-dialog .form-status.error { color: var(--color-error, #b3261e); }
+    #vt-vehicle-dialog .form-status.error { color: var(--color-error-text, #b3261e); }
     #vt-vehicle-dialog .muted { font-size: 0.85rem; opacity: 0.75; }
     #vt-vehicle-dialog .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
     #vt-vehicle-dialog .chip { background: var(--color-background-dark, #eee); border-radius: 999px; padding: 0.2rem 0.4rem 0.2rem 0.7rem; display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; }
@@ -604,14 +604,14 @@
       importStyle.textContent = `
         #vt-vehicle-dialog .vt-import-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
         #vt-vehicle-dialog .vt-import-summary { margin: 0.5rem 0 0.3rem; }
-        #vt-vehicle-dialog .vt-import-warnings { font-size: 0.85rem; color: var(--color-warning, #9a6700); margin: 0.3rem 0; padding-left: 1.2rem; }
+        #vt-vehicle-dialog .vt-import-warnings { font-size: 0.85rem; color: var(--color-warning-text, #9a6700); margin: 0.3rem 0; padding-left: 1.2rem; }
         #vt-vehicle-dialog .vt-import-table { max-height: 280px; overflow: auto; }
         #vt-vehicle-dialog .vt-import-table table { margin-top: 0.3rem; font-size: 0.8rem; }
         #vt-vehicle-dialog .vt-import-table td.num { white-space: nowrap; }
         #vt-vehicle-dialog .vt-import-table tr.dup { opacity: 0.5; }
         #vt-vehicle-dialog details.vt-import-details summary { cursor: pointer; font-size: 0.85rem; }
         #vt-vehicle-dialog .form-status.success { color: var(--color-success, #1a7f37); }
-        #vt-vehicle-dialog .form-status.warning { color: var(--color-warning, #9a6700); }
+        #vt-vehicle-dialog .form-status.warning { color: var(--color-warning-text, #9a6700); }
       `;
       document.head.appendChild(importStyle);
 
@@ -680,7 +680,7 @@
       function rowsTable(result) {
         const rows = [
           ...result.tankungen.map((t) => ({
-            datum: t.datum, dup: t.duplikat, art: `Tankung ${t.kraftstoffart}${t.nicht_voll ? ' (nicht voll)' : ''}`,
+            datum: t.datum, dup: t.duplikat, skip: t.uebersprungen, art: `Tankung ${t.kraftstoffart}${t.nicht_voll ? ' (nicht voll)' : ''}`,
             km: fmtNum(t.kilometerstand), menge: `${fmtNum(t.fuellmenge_liter, 2)} l`, betrag: t.gesamtpreis, text: t.quelle,
           })),
           ...result.kosten.map((c) => ({
@@ -694,7 +694,7 @@
             <thead><tr><th>Datum</th><th>Art</th><th class="num">km</th><th class="num">Menge</th><th class="num">Betrag</th><th>Status</th><th>Beschreibung / Herkunft</th></tr></thead>
             <tbody>${rows.map((r) => `<tr class="${r.dup ? 'dup' : ''}">
               <td>${fmtDate(r.datum)}</td><td>${esc(r.art)}</td><td class="num">${r.km}</td><td class="num">${r.menge}</td>
-              <td class="num">${fmtEur(r.betrag)}</td><td>${r.dup ? 'Duplikat' : 'neu'}</td><td>${esc(r.text)}</td>
+              <td class="num">${fmtEur(r.betrag)}</td><td>${r.dup ? 'Duplikat' : r.skip ? `<b>übersprungen</b> (${esc(r.skip)})` : 'neu'}</td><td>${esc(r.text)}</td>
             </tr>`).join('')}</tbody>
           </table></div></details>`;
       }
@@ -708,7 +708,7 @@
         $('vt-import-preview').innerHTML = `
           <div class="vt-import-summary">
             <b>${result.tankungen_neu}</b> neue Tankungen · <b>${result.kosten_neu}</b> neue Kosten ·
-            ${duplikate} ${duplikate === 1 ? "Duplikat" : "Duplikate"} übersprungen
+            ${duplikate} ${duplikate === 1 ? "Duplikat" : "Duplikate"} übersprungen${result.tankungen_uebersprungen ? ` · <b>${result.tankungen_uebersprungen}</b> mit unpassendem km-Stand übersprungen` : ""}
           </div>
           ${kaufText(result.kauf)}
           ${warnungen}
@@ -912,7 +912,7 @@
       const exportStyle = document.createElement('style');
       exportStyle.textContent = `
         #vehicle-tracker-root .vt-export { display: inline-flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-left: auto; }
-        #vehicle-tracker-root .vt-export-status { font-size: 0.85rem; color: var(--color-error, #b3261e); }
+        #vehicle-tracker-root .vt-export-status { font-size: 0.85rem; color: var(--color-error-text, #b3261e); }
       `;
       document.head.appendChild(exportStyle);
       const wrap = document.createElement('span');
@@ -1150,8 +1150,8 @@
     reminderStyle.textContent = `
       #vehicle-tracker-root tr.vt-rem-faellig td { background: color-mix(in srgb, var(--color-error, #b3261e) 12%, transparent); }
       #vehicle-tracker-root tr.vt-rem-bald td { background: color-mix(in srgb, var(--color-warning, #9a6700) 12%, transparent); }
-      #vehicle-tracker-root .vt-rem-state.faellig { color: var(--color-error, #b3261e); font-weight: 600; }
-      #vehicle-tracker-root .vt-rem-state.bald { color: var(--color-warning, #9a6700); font-weight: 600; }
+      #vehicle-tracker-root .vt-rem-state.faellig { color: var(--color-error-text, #b3261e); font-weight: 600; }
+      #vehicle-tracker-root .vt-rem-state.bald { color: var(--color-warning-text, #9a6700); font-weight: 600; }
       #vehicle-tracker-root .vt-reminder-badge { margin-left: auto; border-radius: 999px; padding: 0.2rem 0.8rem; cursor: pointer; font-size: 0.85rem;
         border: 1px solid var(--color-warning, #9a6700); background: color-mix(in srgb, var(--color-warning, #9a6700) 12%, transparent); color: inherit; }
       #vehicle-tracker-root .vt-reminder-badge.faellig { border-color: var(--color-error, #b3261e); background: color-mix(in srgb, var(--color-error, #b3261e) 12%, transparent); }

@@ -212,11 +212,31 @@ def test_vorhandene_kaufdaten_bleiben(client, db_session):
     assert (saved["kaufpreis"], saved["kaufdatum"]) == (7777, "2022-02-01")
 
 
-def test_sinkende_kilometerstaende_werden_abgelehnt(client, db_session):
+def test_einzelner_tippfehler_im_km_stand_wird_uebersprungen(client, db_session):
+    """Wie in der echten Datei: ein km-Stand mit Zahlendreher (181.901 statt
+    172.901) darf nicht den ganzen Import blockieren."""
     vehicle = _vehicle(client)
     content = build_workbook(lpg_rows=[
         (D(2022, 3, 5), 100300, 40.0, 0.8, 32.0),
-        (D(2022, 4, 5), 100100, 40.0, 0.8, 32.0),
+        (D(2022, 3, 20), 190700, 40.0, 0.8, 32.1),  # Tippfehler
+        (D(2022, 4, 5), 100700, 40.0, 0.8, 32.2),
+        (D(2022, 4, 25), 101100, 40.0, 0.8, 32.3),
+    ], benzin_rows=[])
+    body = _upload(client, vehicle["id"], content, dry_run=False).json()
+    assert body["tankungen_uebersprungen"] == 1
+    assert [t["kilometerstand"] for t in body["tankungen"] if t["uebersprungen"]] == [190700]
+    assert any("190.700 km" in w and "Tippfehler" in w for w in body["warnungen"])
+    gespeichert = sorted(e.kilometerstand for e in db_session.query(FuelEntry).all())
+    assert 190700 not in gespeichert and 101100 in gespeichert
+
+
+def test_viele_sinkende_kilometerstaende_werden_abgelehnt(client, db_session):
+    vehicle = _vehicle(client)
+    content = build_workbook(lpg_rows=[
+        (D(2022, 3, 5), 100300, 40.0, 0.8, 32.0),
+        (D(2022, 3, 10), 100200, 40.0, 0.8, 32.1),
+        (D(2022, 3, 15), 100100, 40.0, 0.8, 32.2),
+        (D(2022, 3, 20), 100000, 40.0, 0.8, 32.3),
     ])
     for dry_run in (True, False):
         response = _upload(client, vehicle["id"], content, dry_run=dry_run)

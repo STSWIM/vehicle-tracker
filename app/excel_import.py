@@ -471,6 +471,35 @@ def parse_workbook(file_bytes: bytes) -> ImportPreview:
     return preview
 
 
+def km_ausreisser(punkte: list[tuple[datetime.date, int, bool]]) -> set[int]:
+    """Indizes neuer Punkte, die nicht in die Kilometerfolge passen.
+
+    punkte: (datum, km, ist_neu). Gesucht wird die laengste chronologische
+    Folge mit nicht sinkendem km-Stand; vorhandene Eintraege wiegen dabei so
+    schwer, dass sie praktisch immer drinbleiben. Was von den neuen Punkten
+    nicht in diese Folge passt, ist vermutlich ein Tippfehler (z.B. 181.901
+    statt 172.901) und wird beim Import uebersprungen statt die ganze Datei
+    abzulehnen.
+    """
+    reihenfolge = sorted(range(len(punkte)), key=lambda i: (punkte[i][0], punkte[i][1]))
+    gewicht = [1 if neu else 10_000 for _, _, neu in punkte]
+    beste: dict[int, int] = {}
+    vorgaenger: dict[int, int | None] = {}
+    for pos, i in enumerate(reihenfolge):
+        beste[i], vorgaenger[i] = gewicht[i], None
+        for j in reihenfolge[:pos]:
+            if punkte[j][1] <= punkte[i][1] and beste[j] + gewicht[i] > beste[i]:
+                beste[i], vorgaenger[i] = beste[j] + gewicht[i], j
+    if not punkte:
+        return set()
+    kette: set[int] = set()
+    i: int | None = max(beste, key=beste.get)
+    while i is not None:
+        kette.add(i)
+        i = vorgaenger[i]
+    return {i for i, (_, _, neu) in enumerate(punkte) if neu and i not in kette}
+
+
 def km_konflikte(punkte: list[tuple[datetime.date, int, str, bool]], max_meldungen: int = 5) -> list[str]:
     """Prueft, dass Kilometerstaende mit dem Datum nicht sinken.
 
