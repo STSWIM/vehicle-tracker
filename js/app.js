@@ -379,6 +379,17 @@
     let editingVehicleId = null;
     let markers = [];
 
+    // Uploads laufen ueber den PHP-Proxy von AppAPI. Ist die Datei groesser als
+    // upload_max_filesize/post_max_size in PHP, verwirft PHP sie stillschweigend
+    // und bei der App kommt die Anfrage ohne Datei an (422 "Field required").
+    function uploadMissingHint(res, body) {
+      const fehlt = res.status === 422 && Array.isArray(body.detail)
+        && body.detail.some((d) => d.type === 'missing' && (d.loc || []).includes('body'));
+      return fehlt
+        ? 'Die Datei ist nicht angekommen – vermutlich ist sie größer als das Upload-Limit von PHP auf dem Server (upload_max_filesize / post_max_size).'
+        : '';
+    }
+
     function showFormStatus(el, kind, message) {
       el.textContent = message;
       el.className = `form-status ${kind}`;
@@ -645,7 +656,8 @@
         );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const detail = Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join(' / ') : body.detail;
+          const detail = uploadMissingHint(res, body)
+            || (Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join(' / ') : body.detail);
           showFormStatus($('vt-import-status'), 'error', detail || `Fehler (${res.status})`);
           return null;
         }
@@ -1006,7 +1018,7 @@
           const res = await fetch(`${BASE}/api/fuel-entries/${saved.id}/foto?art=${art}`, { method: 'POST', body: data });
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
-            fehler.push(`${label}: ${body.detail || `Fehler (${res.status})`}`);
+            fehler.push(`${label}: ${uploadMissingHint(res, body) || body.detail || `Fehler (${res.status})`}`);
           }
         } catch (e) {
           fehler.push(`${label}: Upload fehlgeschlagen`);
