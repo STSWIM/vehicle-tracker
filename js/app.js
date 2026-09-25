@@ -42,10 +42,19 @@
       border-radius: var(--border-radius-large, 10px);
       margin: 0.75rem;
       padding: 0.75rem 1.25rem 1.25rem;
+      /* Immer die volle Breite nutzen statt sich nach dem Inhalt zu richten -
+         sonst verschiebt sich die Karte, sobald ein breiter Bereich aufgeht. */
+      box-sizing: border-box; width: calc(100% - 1.5rem); flex: 1 1 auto; min-width: 0;
     }
     #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     #vehicle-tracker-root h3 { margin: 1.25rem 0 0.25rem; font-size: 1rem; }
-    #vehicle-tracker-root .vt-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 40%); gap: 1.5rem; align-items: start; }
+    #vehicle-tracker-root .vt-layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 32vw, 620px); gap: 1.5rem; align-items: start; }
+    /* Platz fuer die Bildlaufleiste immer reservieren, sonst ruckt die Seite
+       seitlich, sobald ein aufgeklappter Bereich sie erscheinen laesst. */
+    html, body, #content { scrollbar-gutter: stable; }
+    #vehicle-tracker-root .vt-layout.no-map { grid-template-columns: minmax(0, 1fr); }
+    #vehicle-tracker-root .vt-layout.no-map .vt-side { display: none; }
+    #vehicle-tracker-root #vt-map-toggle { margin-left: auto; }
     #vehicle-tracker-root .vt-side { position: sticky; top: 0.75rem; }
     #vehicle-tracker-root #vt-map { height: 70vh; min-height: 320px; border-radius: 8px; }
     @media (max-width: 1000px) {
@@ -124,6 +133,7 @@
         <select id="vt-vehicle-select"></select>
         <button type="button" id="vt-new-vehicle">Anlegen</button>
         <button type="button" id="vt-edit-vehicle" hidden>Bearbeiten</button>
+        <button type="button" id="vt-map-toggle" title="Karte ein- oder ausblenden, z. B. auf kleinen Bildschirmen">Karte ausblenden</button>
       </header>
 
       <div class="vt-layout">
@@ -339,8 +349,28 @@
       new ResizeObserver(() => map.invalidateSize()).observe($('vt-map'));
     } catch (e) {
       document.querySelector('#vehicle-tracker-root .vt-side').remove();
-      document.querySelector('#vehicle-tracker-root .vt-layout').style.gridTemplateColumns = 'minmax(0, 1fr)';
+      document.querySelector('#vehicle-tracker-root .vt-layout').classList.add('no-map');
+      $('vt-map-toggle').remove();
       map = null;
+    }
+
+    // Karte ein-/ausblenden; die Wahl merkt sich der Browser. Ohne gemerkte
+    // Wahl startet ein schmaler Bildschirm ohne Karte.
+    if (map) {
+      const layout = document.querySelector('#vehicle-tracker-root .vt-layout');
+      const setMapVisible = (visible) => {
+        layout.classList.toggle('no-map', !visible);
+        $('vt-map-toggle').textContent = visible ? 'Karte ausblenden' : 'Karte einblenden';
+        if (visible) setTimeout(() => map.invalidateSize(), 0);
+      };
+      let stored = null;
+      try { stored = localStorage.getItem('vt-map-visible'); } catch (e) { /* ohne Speicher */ }
+      setMapVisible(stored === null ? window.innerWidth >= 1000 : stored === '1');
+      $('vt-map-toggle').addEventListener('click', () => {
+        const visible = layout.classList.contains('no-map');
+        setMapVisible(visible);
+        try { localStorage.setItem('vt-map-visible', visible ? '1' : '0'); } catch (e) { /* ohne Speicher */ }
+      });
     }
 
     let me = { uid: '', standalone: false };
