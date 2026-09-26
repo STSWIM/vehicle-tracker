@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -77,11 +77,15 @@ def _entry_with_vehicle(db: Session, entry_id: int, user: CurrentUser) -> tuple[
 @router.post("/{entry_id}/foto", response_model=FuelEntryOut)
 async def upload_fuel_entry_photo(
     entry_id: int,
-    art: PhotoKind = Query(PhotoKind.BELEG),
+    art_query: PhotoKind | None = Query(None, alias="art"),
+    # Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter,
+    # deshalb kommt "art" aus dem Frontend als Formularfeld.
+    art_form: PhotoKind | None = Form(None, alias="art"),
     datei: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    art = art_form or art_query or PhotoKind.BELEG
     entry, vehicle = _entry_with_vehicle(db, entry_id, user)
     data = await datei.read(MAX_PHOTO_BYTES + 1)
     try:

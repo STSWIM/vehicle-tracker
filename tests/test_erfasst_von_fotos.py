@@ -263,8 +263,9 @@ def test_foto_upload_und_abruf_standalone(as_user, photo_dir):
     assert pfad == f"Fahrzeuge/RT-WI 14/Belege/2024-01-01_beleg_{entry['id']}.jpg"
     assert (photo_dir / "fotos" / "alice" / pfad).read_bytes() == JPEG
 
+    # "art" als Formularfeld, wie es das Frontend wegen des AppAPI-Proxys schickt
     response = carol.post(
-        f"/api/fuel-entries/{entry['id']}/foto?art=tacho", files={"datei": ("t.png", PNG, "image/png")}
+        f"/api/fuel-entries/{entry['id']}/foto", data={"art": "tacho"}, files={"datei": ("t.png", PNG, "image/png")}
     )
     assert response.json()["tacho_foto_pfad"].endswith(f"_tacho_{entry['id']}.png")
 

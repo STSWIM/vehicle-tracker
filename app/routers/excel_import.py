@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -117,11 +117,15 @@ def _read_upload(file: UploadFile) -> bytes:
 @router.post("/{vehicle_id}/import/excel", response_model=ImportResult)
 def import_excel(
     vehicle_id: int,
-    dry_run: bool = True,
+    dry_run_query: bool | None = Query(None, alias="dry_run"),
+    # Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter,
+    # deshalb schickt das Frontend dry_run als Formularfeld mit.
+    dry_run_form: bool | None = Form(None, alias="dry_run"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ImportResult:
+    dry_run = next((v for v in (dry_run_form, dry_run_query) if v is not None), True)
     vehicle: Vehicle = get_accessible_vehicle(db, vehicle_id, user)
     try:
         preview = parse_workbook(_read_upload(file))

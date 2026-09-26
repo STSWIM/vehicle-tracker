@@ -650,8 +650,11 @@
       async function sendImport(dryRun) {
         const data = new FormData();
         data.append('file', importFile);
+        // Formularfeld statt Query-Parameter: der AppAPI-Proxy verwirft bei
+        // Datei-Uploads die Query-Parameter.
+        data.append('dry_run', dryRun ? 'true' : 'false');
         const res = await fetch(
-          `${BASE}/api/vehicles/${importVehicleId}/import/excel?dry_run=${dryRun ? 'true' : 'false'}`,
+          `${BASE}/api/vehicles/${importVehicleId}/import/excel`,
           { method: 'POST', body: data }
         );
         const body = await res.json().catch(() => ({}));
@@ -1014,8 +1017,9 @@
         }
         const data = new FormData();
         data.append('datei', file);
+        data.append('art', art);
         try {
-          const res = await fetch(`${BASE}/api/fuel-entries/${saved.id}/foto?art=${art}`, { method: 'POST', body: data });
+          const res = await fetch(`${BASE}/api/fuel-entries/${saved.id}/foto`, { method: 'POST', body: data });
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
             fehler.push(`${label}: ${uploadMissingHint(res, body) || body.detail || `Fehler (${res.status})`}`);

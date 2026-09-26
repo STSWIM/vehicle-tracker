@@ -164,6 +164,17 @@ def _upload(client, vehicle_id, content, dry_run=True):
     )
 
 
+def test_dry_run_als_formularfeld(client, db_session):
+    """Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter -
+    dry_run muss deshalb auch als Formularfeld funktionieren."""
+    vehicle = _vehicle(client)
+    files = {"file": ("b.xlsx", build_workbook(), "application/octet-stream")}
+    body = client.post(f"/api/vehicles/{vehicle['id']}/import/excel", data={"dry_run": "true"}, files=files).json()
+    assert body["dry_run"] is True and db_session.query(FuelEntry).count() == 0
+    body = client.post(f"/api/vehicles/{vehicle['id']}/import/excel", data={"dry_run": "false"}, files=files).json()
+    assert body["dry_run"] is False and db_session.query(FuelEntry).count() == body["tankungen_neu"] > 0
+
+
 def test_dry_run_duplikat_und_import(client, db_session):
     vehicle = _vehicle(client)
     # bereits von Hand erfasst (Gesamtpreis auf Cent gerundet, km leicht anders)
