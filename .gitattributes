@@ -1,0 +1,2 @@
+# Shell-Skripte laufen auf dem Server: immer LF, auch bei Checkouts unter Windows
+*.sh text eol=lf
