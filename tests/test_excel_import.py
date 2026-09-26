@@ -164,6 +164,17 @@ def _upload(client, vehicle_id, content, dry_run=True):
     )
 
 
+def test_vorschau_und_uebernehmen_als_pfad(client, db_session):
+    """So ruft das Frontend auf: der Modus steckt im Pfad, weil der
+    AppAPI-Proxy bei multipart weder Query noch Formularfelder durchreicht."""
+    vehicle = _vehicle(client)
+    files = {"file": ("b.xlsx", build_workbook(), "application/octet-stream")}
+    body = client.post(f"/api/vehicles/{vehicle['id']}/import/excel/vorschau", files=files).json()
+    assert body["dry_run"] is True and db_session.query(FuelEntry).count() == 0
+    body = client.post(f"/api/vehicles/{vehicle['id']}/import/excel/uebernehmen", files=files).json()
+    assert body["dry_run"] is False and db_session.query(FuelEntry).count() == body["tankungen_neu"] > 0
+
+
 def test_dry_run_als_formularfeld(client, db_session):
     """Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter -
     dry_run muss deshalb auch als Formularfeld funktionieren."""

@@ -74,18 +74,33 @@ def _entry_with_vehicle(db: Session, entry_id: int, user: CurrentUser) -> tuple[
     return entry, get_accessible_vehicle(db, entry.vehicle_id, user)
 
 
+# Fotoart im Pfad: der AppAPI-Proxy reicht bei multipart-Uploads weder
+# Query-Parameter noch zuverlaessig Formularfelder durch.
+@router.post("/{entry_id}/foto/{art}", response_model=FuelEntryOut)
+async def upload_fuel_entry_photo_art(
+    entry_id: int,
+    art: PhotoKind,
+    datei: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await _store_photo(entry_id, art, datei, db, user)
+
+
 @router.post("/{entry_id}/foto", response_model=FuelEntryOut)
 async def upload_fuel_entry_photo(
     entry_id: int,
     art_query: PhotoKind | None = Query(None, alias="art"),
-    # Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter,
-    # deshalb kommt "art" aus dem Frontend als Formularfeld.
     art_form: PhotoKind | None = Form(None, alias="art"),
     datei: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    art = art_form or art_query or PhotoKind.BELEG
+    """Direktaufruf ohne Proxy: Fotoart als Query oder Formularfeld."""
+    return await _store_photo(entry_id, art_form or art_query or PhotoKind.BELEG, datei, db, user)
+
+
+async def _store_photo(entry_id: int, art: PhotoKind, datei: UploadFile, db: Session, user: CurrentUser):
     entry, vehicle = _entry_with_vehicle(db, entry_id, user)
     data = await datei.read(MAX_PHOTO_BYTES + 1)
     try:

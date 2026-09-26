@@ -114,18 +114,46 @@ def _read_upload(file: UploadFile) -> bytes:
     return data
 
 
+# Vorschau und Uebernehmen als eigene Pfade: der AppAPI-Proxy reicht bei
+# multipart-Uploads weder Query-Parameter noch zuverlaessig Formularfelder
+# durch - der Pfad kommt dagegen immer an.
+@router.post("/{vehicle_id}/import/excel/vorschau", response_model=ImportResult)
+def import_excel_vorschau(
+    vehicle_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> ImportResult:
+    return _import_excel(vehicle_id, True, file, db, user)
+
+
+@router.post("/{vehicle_id}/import/excel/uebernehmen", response_model=ImportResult)
+def import_excel_uebernehmen(
+    vehicle_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> ImportResult:
+    return _import_excel(vehicle_id, False, file, db, user)
+
+
 @router.post("/{vehicle_id}/import/excel", response_model=ImportResult)
 def import_excel(
     vehicle_id: int,
     dry_run_query: bool | None = Query(None, alias="dry_run"),
-    # Der AppAPI-Proxy verwirft bei multipart-Uploads die Query-Parameter,
-    # deshalb schickt das Frontend dry_run als Formularfeld mit.
     dry_run_form: bool | None = Form(None, alias="dry_run"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ImportResult:
+    """Direktaufruf ohne Proxy (Skripte, Tests): dry_run als Query oder Formularfeld."""
     dry_run = next((v for v in (dry_run_form, dry_run_query) if v is not None), True)
+    return _import_excel(vehicle_id, dry_run, file, db, user)
+
+
+def _import_excel(
+    vehicle_id: int, dry_run: bool, file: UploadFile, db: Session, user: CurrentUser
+) -> ImportResult:
     vehicle: Vehicle = get_accessible_vehicle(db, vehicle_id, user)
     try:
         preview = parse_workbook(_read_upload(file))
