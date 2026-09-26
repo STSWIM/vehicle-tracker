@@ -20,6 +20,7 @@ from app.models import (  # noqa: E402
     LogbookEntry,
     MaintenanceReminder,
     OtherCost,
+    TalkConversation,
     Trip,
     Vehicle,
     VehicleShare,
@@ -39,6 +40,7 @@ def db_session():
         session.query(LogbookEntry).delete()
         session.query(Trip).delete()
         session.query(VehicleShare).delete()
+        session.query(TalkConversation).delete()
         session.query(Vehicle).delete()
         session.commit()
         yield session

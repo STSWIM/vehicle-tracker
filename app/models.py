@@ -278,3 +278,17 @@ class Trip(Base):
     )
 
     vehicle: Mapped["Vehicle"] = relationship(back_populates="trips")
+
+
+class TalkConversation(Base):
+    """Talk-Unterhaltungen, in denen der Bot schon Nachrichten bekommen hat,
+    samt den Nutzern, die dort geschrieben haben. AppAPI legt den Bot bei
+    jeder Neu-Registrierung der App neu an; damit ihn niemand von Hand wieder
+    aktivieren muss, schaltet ihn app/talk_bot/rebind.py hier als einer
+    dieser Nutzer (sofern Moderator) wieder ein."""
+
+    __tablename__ = "talk_conversations"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    uid: Mapped[str] = mapped_column(String(255), primary_key=True)
+    zuletzt_gesehen: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)

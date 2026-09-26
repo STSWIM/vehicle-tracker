@@ -53,6 +53,7 @@ from app.photo_storage import (
 )
 from app.talk_bot import session as capture_session
 from app.talk_bot.bot import bot
+from app.talk_bot.rebind import remember_conversation
 from app.validation import KilometerstandUnplausibelError, pruefe_verbrauch
 
 router = APIRouter(prefix="/talk-bot", tags=["talk-bot"])
@@ -177,6 +178,10 @@ async def talk_webhook(message: typing.Annotated[TalkBotMessage, Depends(atalk_b
 
     db: Session = SessionLocal()
     try:
+        kind, _, uid = message.actor_id.partition("/")
+        if kind == "users" and uid:
+            # fuer das automatische Wiederaktivieren nach einem Deploy
+            remember_conversation(db, message.conversation_token, uid)
         await _handle_message(message, db)
     finally:
         db.close()

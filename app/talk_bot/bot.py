@@ -21,5 +21,10 @@ bot = AsyncTalkBot(
 
 
 async def handle_enabled(enabled: bool, nc: AsyncNextcloudApp) -> None:
-    """Registriert bzw. deregistriert den Talk-Bot passend zum App-Status."""
+    """Registriert bzw. deregistriert den Talk-Bot passend zum App-Status und
+    aktiviert ihn nach dem Registrieren in den bekannten Unterhaltungen."""
     await bot.enabled_handler(enabled, nc)
+    if enabled:
+        from app.talk_bot.rebind import schedule_rebind
+
+        schedule_rebind(bot.display_name)
