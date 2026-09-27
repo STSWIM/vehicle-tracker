@@ -86,7 +86,7 @@
     #vehicle-tracker-root .vt-tabs button { background: none; border: none; border-radius: 8px 8px 0 0; padding: 0.5rem 0.9rem; margin-bottom: -2px;
       border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; opacity: 0.7; min-height: 0; }
     #vehicle-tracker-root .vt-tabs button:hover { opacity: 1; background: var(--color-background-hover, #f2f2f2); }
-    #vehicle-tracker-root .vt-tabs button.active { opacity: 1; border-bottom-color: var(--color-primary-element, #0082c9); color: var(--color-primary-element-text-dark, inherit); }
+    #vehicle-tracker-root .vt-tabs button.active { opacity: 1; font-weight: 700; color: var(--color-main-text, #222); border-bottom: 3px solid var(--color-primary-element, #0082c9); }
     #vehicle-tracker-root .vt-tab-panel .vt-scroll { margin-top: 0.4rem; }
     /* Erfassen: Knoepfe oeffnen die Formulare als Popup */
     #vehicle-tracker-root .vt-add-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
@@ -289,8 +289,18 @@
 
       <div class="vt-tabs" role="tablist">
         <button type="button" role="tab" data-tab="tank">Tankbuch <span class="vt-count" id="vt-entries-count"></span></button>
+        <button type="button" role="tab" data-tab="kosten">Sonstige Kosten <span class="vt-count" id="vt-costs-count"></span></button>
         <button type="button" role="tab" data-tab="wartung">Wartungslogbuch <span class="vt-count" id="vt-logbook-count"></span></button>
         <button type="button" role="tab" data-tab="fahrten">Fahrtenbuch <span class="vt-count" id="vt-trips-count"></span></button>
+      </div>
+
+      <div class="vt-tab-panel" data-panel="kosten" hidden>
+        <div class="vt-scroll">
+          <table id="vt-costs">
+            <thead><tr><th>Datum</th><th>Kategorie</th><th class="num">Betrag</th><th>Beschreibung</th><th></th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="vt-tab-panel" data-panel="wartung" hidden>
@@ -1229,10 +1239,11 @@
 
     async function loadVehicle(vehicleId) {
       currentVehicleId = vehicleId;
-      const [entries, logbook, trips] = await Promise.all([
+      const [entries, logbook, trips, costs] = await Promise.all([
         fetch(`${BASE}/api/fuel-entries?vehicle_id=${vehicleId}`).then((r) => r.json()),
         fetch(`${BASE}/api/logbook?vehicle_id=${vehicleId}`).then((r) => r.json()),
         fetch(`${BASE}/api/trips?vehicle_id=${vehicleId}`).then((r) => r.json()),
+        fetch(`${BASE}/api/other-costs?vehicle_id=${vehicleId}`).then((r) => r.json()),
       ]);
       loadStats();
       loadReminders(vehicleId);
@@ -1240,6 +1251,7 @@
       renderMarkers(entries);
       renderLogbook(logbook);
       renderTrips(trips);
+      renderCosts(costs);
     }
 
     // --- Farbliche Einordnung im Tankbuch ------------------------------------
@@ -1317,6 +1329,20 @@
       if (!target) return;
       if (await deleteEntry(`${BASE}${target.dataset.delete}`)) loadVehicle(currentVehicleId);
     });
+
+    function renderCosts(costs) {
+      $('vt-costs-count').textContent = costs.length ? `(${costs.length})` : '';
+      document.querySelector('#vt-costs tbody').innerHTML = [...costs]
+        .sort((a, b) => b.datum.localeCompare(a.datum))
+        .map(
+          (c) => `<tr>
+            <td>${fmtDate(c.datum)}</td><td>${esc(c.kategorie)}${c.jaehrlich_wiederkehrend ? ' <span class="muted">(jährlich)</span>' : ''}</td>
+            <td class="num">${fmtEur(c.betrag)}</td><td>${esc(c.beschreibung)}</td>
+            <td>${erfasstVon(c)}</td><td>${deleteButton('/api/other-costs', c.id)}</td>
+          </tr>`
+        )
+        .join('') || '<tr><td colspan="6" class="muted">Noch keine sonstigen Kosten erfasst.</td></tr>';
+    }
 
     function renderLogbook(entries) {
       $('vt-logbook-count').textContent = entries.length ? `(${entries.length})` : '';
