@@ -81,6 +81,13 @@
     #vehicle-tracker-root .vt-val.schlecht { background: rgba(220, 53, 69, 0.28); }
     #vehicle-tracker-root .vt-val.gut.stark { background: rgba(46, 160, 67, 0.62); font-weight: 700; }
     #vehicle-tracker-root .vt-val.schlecht.stark { background: rgba(220, 53, 69, 0.60); font-weight: 700; }
+    /* Reiter fuer Tankbuch, Wartungslogbuch, Fahrtenbuch, Erinnerungen */
+    #vehicle-tracker-root .vt-tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 2px solid var(--color-border, #e5e5e5); margin: 0.5rem 0 0.6rem; }
+    #vehicle-tracker-root .vt-tabs button { background: none; border: none; border-radius: 8px 8px 0 0; padding: 0.5rem 0.9rem; margin-bottom: -2px;
+      border-bottom: 2px solid transparent; cursor: pointer; font-weight: 600; opacity: 0.7; min-height: 0; }
+    #vehicle-tracker-root .vt-tabs button:hover { opacity: 1; background: var(--color-background-hover, #f2f2f2); }
+    #vehicle-tracker-root .vt-tabs button.active { opacity: 1; border-bottom-color: var(--color-primary-element, #0082c9); color: var(--color-primary-element-text-dark, inherit); }
+    #vehicle-tracker-root .vt-tab-panel .vt-scroll { margin-top: 0.4rem; }
     /* Erfassen: Knoepfe oeffnen die Formulare als Popup */
     #vehicle-tracker-root .vt-add-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
     .vt-entry-dialog {
@@ -110,21 +117,15 @@
     #vehicle-tracker-root .auswertung-controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; }
     #vehicle-tracker-root .auswertung-controls label { display: flex; gap: 0.35rem; align-items: center; }
     #vehicle-tracker-root .auswertung-controls input[type="date"] { min-width: 11em; }
-    #vehicle-tracker-root #vt-stats { padding: 0.5rem 0; display: flex; gap: 0.75rem; flex-wrap: wrap; }
-    #vehicle-tracker-root .stat { background: var(--color-background-dark, #f5f5f5); border-radius: 8px; padding: 0.5rem 0.9rem; min-width: 8.5rem; }
-    #vehicle-tracker-root .stat b { display: block; font-size: 1.1rem; }
+    #vehicle-tracker-root #vt-stats { padding: 0.5rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: 0.5rem; }
+    #vehicle-tracker-root .stat { background: var(--color-background-dark, #f5f5f5); border-radius: 8px; padding: 0.45rem 0.6rem; font-size: 0.8rem; min-width: 0; }
+    #vehicle-tracker-root .stat b { display: block; font-size: 1rem; white-space: nowrap; }
     #vehicle-tracker-root .stat.muted { opacity: 0.55; }
     #vehicle-tracker-root .kategorien { font-size: 0.85rem; opacity: 0.8; }
     /* Tankluecken-Hinweise (Issue #12) */
     #vehicle-tracker-root .vt-hinweise { font-size: 0.85rem; color: var(--color-warning-text, #9a6700); padding: 0.35rem 0 0; }
     #vehicle-tracker-root .vt-hinweise div + div { margin-top: 0.2rem; }
     #vehicle-tracker-root .hint { padding: 0.75rem 0; opacity: 0.8; }
-    #vehicle-tracker-root details.manual-entry { margin: 0 0 0.75rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; }
-    #vehicle-tracker-root details.manual-entry summary { padding: 0.5rem 0.9rem; cursor: pointer; font-weight: 600; }
-    #vehicle-tracker-root details.manual-entry .section-body { padding: 0 0.9rem 0.9rem; }
-    #vehicle-tracker-root details.manual-entry form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; }
-    #vehicle-tracker-root details.manual-entry label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
-    #vehicle-tracker-root details.manual-entry input[type="date"] { min-width: 11em; }
     #vehicle-tracker-root .form-status { flex-basis: 100%; font-size: 0.85rem; }
     #vehicle-tracker-root .form-hint { flex-basis: 100%; font-size: 0.8rem; opacity: 0.7; }
     #vehicle-tracker-root input.vt-computed { font-style: italic; }
@@ -286,28 +287,32 @@
           </form>
       </dialog>
 
-      <details class="manual-entry">
-        <summary>Wartungslogbuch</summary>
-        <div class="section-body">
+      <div class="vt-tabs" role="tablist">
+        <button type="button" role="tab" data-tab="tank">Tankbuch <span class="vt-count" id="vt-entries-count"></span></button>
+        <button type="button" role="tab" data-tab="wartung">Wartungslogbuch <span class="vt-count" id="vt-logbook-count"></span></button>
+        <button type="button" role="tab" data-tab="fahrten">Fahrtenbuch <span class="vt-count" id="vt-trips-count"></span></button>
+      </div>
+
+      <div class="vt-tab-panel" data-panel="wartung" hidden>
+        <div class="vt-scroll">
           <table id="vt-logbook">
             <thead><tr><th>Datum</th><th class="num">km</th><th>Eintrag</th><th>Notiz</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
-      </details>
+      </div>
 
-      <details class="manual-entry">
-        <summary>Fahrtenbuch</summary>
-        <div class="section-body">
-          <div class="kategorien" id="vt-trip-summen"></div>
+      <div class="vt-tab-panel" data-panel="fahrten" hidden>
+        <div class="kategorien" id="vt-trip-summen"></div>
+        <div class="vt-scroll">
           <table id="vt-trips">
             <thead><tr><th>Datum</th><th>Start</th><th>Ziel</th><th class="num">km Start</th><th class="num">km Ende</th><th class="num">Strecke</th><th>Zweck</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
-      </details>
+      </div>
 
-      <h3>Tankbuch <span class="vt-count" id="vt-entries-count"></span></h3>
+      <div class="vt-tab-panel" data-panel="tank">
       <div class="vt-legend">
         Farben je Spritsorte: <span class="vt-val gut">günstiger / sparsamer</span>
         <span class="vt-val schlecht">teurer / durstiger</span>
@@ -321,6 +326,7 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
       </div>
       </div>
 
@@ -907,6 +913,22 @@
       if (close) close.closest('dialog').close();
     });
 
+    // --- Reiter --------------------------------------------------------------
+    function showTab(name) {
+      const tabs = [...document.querySelectorAll('#vehicle-tracker-root .vt-tabs [data-tab]')];
+      if (!tabs.some((t) => t.dataset.tab === name)) name = 'tank';
+      tabs.forEach((t) => {
+        t.classList.toggle('active', t.dataset.tab === name);
+        t.setAttribute('aria-selected', String(t.dataset.tab === name));
+      });
+      document.querySelectorAll('#vehicle-tracker-root .vt-tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== name; });
+      try { localStorage.setItem('vt-tab', name); } catch (e) { /* ohne Speicher */ }
+    }
+    content.addEventListener('click', (ev) => {
+      const tab = ev.target.closest('#vehicle-tracker-root .vt-tabs [data-tab]');
+      if (tab) showTab(tab.dataset.tab);
+    });
+
     let addStatusTimer = null;
     function showAddStatus(message) {
       showFormStatus($('vt-add-status'), 'success', message);
@@ -1031,22 +1053,62 @@
         #vehicle-tracker-root .vt-export-status { font-size: 0.85rem; color: var(--color-error-text, #b3261e); }
       `;
       document.head.appendChild(exportStyle);
-      const wrap = document.createElement('span');
-      wrap.className = 'vt-export';
-      wrap.innerHTML =
-        '<button type="button" data-export="csv" title="Alle Einträge des gewählten Zeitraums als CSV (für Excel)">CSV exportieren</button>' +
-        '<button type="button" data-export="pdf" title="Bericht mit Kennzahlen, Kosten, Wartungshistorie und Fahrten">PDF-Bericht</button>' +
-        '<span class="vt-export-status" role="status"></span>';
-      controls.appendChild(wrap);
-      const status = wrap.querySelector('.vt-export-status');
+      // Ein Knopf in der Auswertungs-Leiste, Optionen im Popup
+      const opener = document.createElement('button');
+      opener.type = 'button';
+      opener.className = 'vt-export';
+      opener.textContent = 'Export …';
+      opener.title = 'Einträge als CSV (für Excel) oder Bericht als PDF';
+      controls.appendChild(opener);
+
+      const dialog = document.createElement('dialog');
+      dialog.className = 'vt-entry-dialog';
+      dialog.id = 'vt-dlg-export';
+      dialog.innerHTML = `
+        <div class="vt-dlg-head"><h2>Export</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>
+        <form class="vt-export-form" onsubmit="return false">
+          <label class="vt-wide"><span><input type="radio" name="vt-export-zeitraum" value="gesamt" checked> Gesamter Zeitraum</span></label>
+          <label class="vt-wide"><span><input type="radio" name="vt-export-zeitraum" value="auswahl"> Zeitraum</span></label>
+          <label>von <input type="date" id="vt-export-von"></label>
+          <label>bis <input type="date" id="vt-export-bis"></label>
+          <label class="vt-wide"><span><input type="checkbox" id="vt-export-anschaffung" checked> Anschaffungskosten im PDF-Bericht einbeziehen</span></label>
+          <div class="vt-export-actions">
+            <button type="button" data-export="csv" title="Alle Einträge des Zeitraums als CSV (für Excel)">CSV exportieren</button>
+            <button type="button" data-export="pdf" class="primary" title="Bericht mit Kennzahlen, Kosten, Wartungshistorie und Fahrten">PDF-Bericht</button>
+          </div>
+          <div class="form-hint">CSV: alle Tankungen, Kosten, Logbuch- und Fahrteneinträge – öffnet sich sauber in Excel. PDF: Bericht mit Kennzahlen, Kosten und kompletter Wartungshistorie, z. B. für Steuerberater oder Verkauf.</div>
+          <div class="vt-export-status form-status" role="status"></div>
+        </form>`;
+      document.getElementById('vehicle-tracker-root').appendChild(dialog);
+      const status = dialog.querySelector('.vt-export-status');
+      const exportStyle2 = document.createElement('style');
+      exportStyle2.textContent = `
+        #vt-dlg-export .vt-wide { grid-column: 1 / -1; }
+        #vt-dlg-export .vt-wide span { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+        #vt-dlg-export .vt-export-actions { grid-column: 1 / -1; display: flex; gap: 0.6rem; }
+      `;
+      document.head.appendChild(exportStyle2);
+
+      // Beim Oeffnen die Einstellungen der Auswertung uebernehmen
+      opener.addEventListener('click', () => {
+        if (!currentVehicleId) return;
+        const auswahl = document.querySelector('input[name="vt-zeitraum"]:checked').value === 'auswahl';
+        dialog.querySelector(`input[name="vt-export-zeitraum"][value="${auswahl ? 'auswahl' : 'gesamt'}"]`).checked = true;
+        $('vt-export-von').value = $('vt-von').value;
+        $('vt-export-bis').value = $('vt-bis').value;
+        $('vt-export-anschaffung').checked = $('vt-mit-anschaffung').checked;
+        status.textContent = '';
+        dialog.showModal();
+      });
+      const wrap = dialog;
 
       function exportParams(format) {
         const params = new URLSearchParams();
-        if (document.querySelector('input[name="vt-zeitraum"]:checked').value === 'auswahl') {
-          if ($('vt-von').value) params.set('von', $('vt-von').value);
-          if ($('vt-bis').value) params.set('bis', $('vt-bis').value);
+        if (dialog.querySelector('input[name="vt-export-zeitraum"]:checked').value === 'auswahl') {
+          if ($('vt-export-von').value) params.set('von', $('vt-export-von').value);
+          if ($('vt-export-bis').value) params.set('bis', $('vt-export-bis').value);
         }
-        if (format === 'pdf') params.set('mit_anschaffung', $('vt-mit-anschaffung').checked ? 'true' : 'false');
+        if (format === 'pdf') params.set('mit_anschaffung', $('vt-export-anschaffung').checked ? 'true' : 'false');
         return params;
       }
 
@@ -1101,7 +1163,6 @@
     photoStyle.textContent = `
       #vehicle-tracker-root .vt-by { display: block; font-size: 0.75rem; opacity: 0.6; }
       #vehicle-tracker-root a.vt-photo { text-decoration: none; font-size: 0.8rem; margin-right: 0.4rem; white-space: nowrap; }
-      #vehicle-tracker-root details.manual-entry input[type="file"] { max-width: 16em; }
     `;
     document.head.appendChild(photoStyle);
 
@@ -1258,6 +1319,7 @@
     });
 
     function renderLogbook(entries) {
+      $('vt-logbook-count').textContent = entries.length ? `(${entries.length})` : '';
       document.querySelector('#vt-logbook tbody').innerHTML = entries
         .map(
           (e) => `<tr>
@@ -1269,6 +1331,7 @@
     }
 
     function renderTrips(trips) {
+      $('vt-trips-count').textContent = trips.length ? `(${trips.length})` : '';
       document.querySelector('#vt-trips tbody').innerHTML = trips
         .map(
           (t) => `<tr>
@@ -1329,12 +1392,13 @@
     `;
     document.head.appendChild(reminderStyle);
 
-    const reminderSection = document.createElement('details');
-    reminderSection.className = 'manual-entry';
+    const reminderSection = document.createElement('div');
+    reminderSection.className = 'vt-tab-panel';
+    reminderSection.dataset.panel = 'erinnerung';
+    reminderSection.hidden = true;
     reminderSection.id = 'vt-reminder-section';
     reminderSection.innerHTML = `
-      <summary>Erinnerungen <span id="vt-reminder-count"></span></summary>
-      <div class="section-body">
+      <div>
         <form id="vt-reminder-form">
           <label>Art
             <select name="typ" required>${REMINDER_TYPES.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
@@ -1349,18 +1413,21 @@
           <div class="form-hint">Fälligkeit nach Datum und/oder km-Stand. Mit Intervall wird nach „erledigt" automatisch die nächste Fälligkeit gesetzt. Der Besitzer erhält eine Nextcloud-Benachrichtigung 14 Tage bzw. 500 km vorher und bei Fälligkeit.</div>
           <div class="form-status" id="vt-reminder-status"></div>
         </form>
-        <table id="vt-reminders">
+        <div class="vt-scroll"><table id="vt-reminders">
           <thead><tr><th>Art</th><th>Beschreibung</th><th>Fällig am</th><th class="num">Fällig bei</th><th>Intervall</th><th>Status</th><th></th></tr></thead>
           <tbody></tbody>
-        </table>
+        </table></div>
       </div>`;
     {
-      const tankbuchHeading = $('vt-entries-count') && $('vt-entries-count').closest('h3');
-      if (tankbuchHeading) {
-        tankbuchHeading.parentNode.insertBefore(reminderSection, tankbuchHeading);
-      } else {
-        document.querySelector('#vehicle-tracker-root .vt-main').appendChild(reminderSection);
-      }
+      // eigener Reiter neben Tankbuch, Wartungslogbuch und Fahrtenbuch
+      const tabButton = document.createElement('button');
+      tabButton.type = 'button';
+      tabButton.setAttribute('role', 'tab');
+      tabButton.dataset.tab = 'erinnerung';
+      tabButton.innerHTML = 'Erinnerungen <span class="vt-count" id="vt-reminder-count"></span>';
+      document.querySelector('#vehicle-tracker-root .vt-tabs').appendChild(tabButton);
+      const panels = document.querySelectorAll('#vehicle-tracker-root .vt-tab-panel');
+      panels[panels.length - 1].after(reminderSection);
     }
     // Formular wie die anderen Erfassen-Formulare als Popup
     const reminderDialog = document.createElement('dialog');
@@ -1474,8 +1541,8 @@
         $('vt-vehicle-select').value = String(first.vehicle_id);
         loadVehicle(first.vehicle_id);
       }
-      reminderSection.open = true;
-      reminderSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showTab('erinnerung');
+      document.querySelector('#vehicle-tracker-root .vt-tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     function resetReminderForm() {
@@ -1553,16 +1620,24 @@
       const res = await fetch(`${BASE}/api/reminders/${r.id}/erledigt?${params}`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        showFormStatus($('vt-reminder-status'), 'error', body.detail || `Fehler (${res.status})`);
+        // Das Formular-Popup ist hier zu - Meldungen neben den Erfassen-Knoepfen
+        showFormStatus($('vt-add-status'), 'error', body.detail || `Fehler (${res.status})`);
         return;
       }
-      showFormStatus($('vt-reminder-status'), 'success', r.intervall_monate || r.intervall_km
+      showAddStatus(r.intervall_monate || r.intervall_km
         ? '✅ Erledigt – nächste Fälligkeit gesetzt.'
         : '✅ Erledigt.');
       loadReminders(currentVehicleId);
     });
 
     // === Ende Erinnerungen ===================================================
+
+    // zuletzt gewaehlten Reiter wiederherstellen (erst jetzt, da alle Reiter existieren)
+    {
+      let savedTab = null;
+      try { savedTab = localStorage.getItem('vt-tab'); } catch (e) { /* ohne Speicher */ }
+      showTab(savedTab || 'tank');
+    }
 
     try {
       me = await fetch(`${BASE}/api/me`).then((r) => r.json());
