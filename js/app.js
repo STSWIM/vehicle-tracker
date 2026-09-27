@@ -65,6 +65,19 @@
     #vehicle-tracker-root table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
     #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border, #eee); }
     #vehicle-tracker-root td.num, #vehicle-tracker-root th.num { text-align: right; }
+    /* Tankbuch: eigener Scrollbereich, Kopfzeile bleibt stehen */
+    #vehicle-tracker-root .vt-scroll { max-height: 60vh; overflow: auto; margin-top: 0.5rem; border: 1px solid var(--color-border, #eee); border-radius: 8px; }
+    #vehicle-tracker-root .vt-scroll table { margin-top: 0; }
+    #vehicle-tracker-root .vt-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--color-main-background, #fff); box-shadow: 0 1px 0 var(--color-border, #eee); }
+    #vehicle-tracker-root .vt-count { font-weight: normal; opacity: 0.6; font-size: 0.9rem; }
+    #vehicle-tracker-root .muted { opacity: 0.6; }
+    #vehicle-tracker-root .vt-legend { font-size: 0.8rem; opacity: 0.85; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    /* Einordnung je Spritsorte: gruen = guenstig/sparsam, rot = teuer/durstig */
+    #vehicle-tracker-root .vt-val { padding: 0.05rem 0.35rem; border-radius: 4px; white-space: nowrap; }
+    #vehicle-tracker-root .vt-val.gut { background: color-mix(in srgb, var(--color-success, #2d7b41) 16%, transparent); }
+    #vehicle-tracker-root .vt-val.schlecht { background: color-mix(in srgb, var(--color-error, #b3261e) 16%, transparent); }
+    #vehicle-tracker-root .vt-val.gut.stark { background: color-mix(in srgb, var(--color-success, #2d7b41) 38%, transparent); font-weight: 700; }
+    #vehicle-tracker-root .vt-val.schlecht.stark { background: color-mix(in srgb, var(--color-error, #b3261e) 38%, transparent); font-weight: 700; }
     #vehicle-tracker-root .auswertung-controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; }
     #vehicle-tracker-root .auswertung-controls label { display: flex; gap: 0.35rem; align-items: center; }
     #vehicle-tracker-root .auswertung-controls input[type="date"] { min-width: 11em; }
@@ -253,13 +266,21 @@
         </div>
       </details>
 
-      <h3>Tankbuch</h3>
-      <table id="vt-entries">
-        <thead>
-          <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th><th></th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <h3>Tankbuch <span class="vt-count" id="vt-entries-count"></span></h3>
+      <div class="vt-legend">
+        Farben je Spritsorte: <span class="vt-val gut">günstiger / sparsamer</span>
+        <span class="vt-val schlecht">teurer / durstiger</span>
+        <span class="vt-val schlecht stark">Ausreißer</span>
+        · Preis im Vergleich zu Tankungen ±60 Tage, Verbrauch zum Median der Sorte. Werte zeigen beim Drüberfahren die Abweichung.
+      </div>
+      <div class="vt-scroll">
+        <table id="vt-entries">
+          <thead>
+            <tr><th>Datum</th><th class="num">km</th><th>Kraftstoff</th><th class="num">Menge</th><th class="num">Preis/l</th><th class="num">Gesamt</th><th class="num">l/100 km</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
       </div>
 
       <aside class="vt-side">
@@ -1072,16 +1093,69 @@
       renderTrips(trips);
     }
 
+    // --- Farbliche Einordnung im Tankbuch ------------------------------------
+    // Immer nur innerhalb derselben Spritsorte. Preise schwanken ueber die Jahre
+    // stark, deshalb Vergleich mit dem Median der Tankungen +-60 Tage; der
+    // Verbrauch ist stabiler und wird mit dem Median der ganzen Sorte verglichen.
+    const PREIS_FENSTER_TAGE = 60;
+    const STUFEN = { preis: [0.04, 0.10], verbrauch: [0.10, 0.25] }; // leicht / Ausreisser
+
+    function median(werte) {
+      const s = [...werte].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    }
+
+    function einordnung(wert, referenz, stufen, einheit, basis) {
+      if (wert === null || wert === undefined || !referenz) return { cls: '', title: '' };
+      const abw = (wert - referenz) / referenz;
+      const betrag = Math.abs(abw);
+      const pct = `${abw > 0 ? '+' : '−'}${fmtNum(betrag * 100, 0)} %`;
+      const title = `${pct} gegenüber ${basis} (${fmtNum(referenz, einheit === '€' ? 3 : 2)}${einheit === '€' ? ' €' : ''})`;
+      if (betrag < stufen[0]) return { cls: '', title };
+      return { cls: `vt-val ${abw < 0 ? 'gut' : 'schlecht'}${betrag >= stufen[1] ? ' stark' : ''}`, title };
+    }
+
+    function fuelEinordnung(entries) {
+      const nachSorte = {};
+      entries.forEach((e) => (nachSorte[e.kraftstoffart] ||= []).push(e));
+      const result = new Map();
+      for (const [sorte, liste] of Object.entries(nachSorte)) {
+        const verbraeuche = liste.map((e) => e.verbrauch_l_100km).filter((v) => v !== null && v !== undefined);
+        const verbrauchMedian = verbraeuche.length >= 3 ? median(verbraeuche) : null;
+        for (const e of liste) {
+          const t = new Date(e.datum).getTime();
+          let nachbarn = liste.filter((o) => Math.abs(new Date(o.datum).getTime() - t) <= PREIS_FENSTER_TAGE * 86400000);
+          if (nachbarn.length < 4) nachbarn = liste;
+          const preisRef = nachbarn.length >= 3 ? median(nachbarn.map((o) => o.preis_pro_liter)) : null;
+          result.set(e.id, {
+            preis: einordnung(e.preis_pro_liter, preisRef, STUFEN.preis, '€', `Median ${sorte} ±${PREIS_FENSTER_TAGE} Tage`),
+            verbrauch: einordnung(e.verbrauch_l_100km, verbrauchMedian, STUFEN.verbrauch, 'l', `Median ${sorte}`),
+          });
+        }
+      }
+      return result;
+    }
+
     function renderFuelEntries(entries) {
-      document.querySelector('#vt-entries tbody').innerHTML = entries
-        .map(
-          (e) => `<tr>
-            <td>${fmtDate(e.datum)}</td><td class="num">${fmtNum(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}</td>
-            <td class="num">${fmtNum(e.fuellmenge_liter, 2)} l</td><td class="num">${fmtNum(e.preis_pro_liter, 3)} €</td>
-            <td class="num">${fmtEur(e.gesamtpreis)}</td>
+      const farben = fuelEinordnung(entries);
+      const zelle = (inhalt, e) => (e.cls ? `<span class="${e.cls}" title="${esc(e.title)}">${inhalt}</span>` : `<span title="${esc(e.title)}">${inhalt}</span>`);
+      $('vt-entries-count').textContent = entries.length ? `(${entries.length})` : '';
+      // Neueste oben - beim Scrollen geht es in die Vergangenheit
+      document.querySelector('#vt-entries tbody').innerHTML = [...entries]
+        .sort((a, b) => b.datum.localeCompare(a.datum) || b.kilometerstand - a.kilometerstand)
+        .map((e) => {
+          const f = farben.get(e.id);
+          const verbrauch = e.verbrauch_l_100km === null || e.verbrauch_l_100km === undefined
+            ? `<span class="muted" title="${e.nicht_voll ? 'nicht vollgetankt' : 'keine vorige Volltankung dieser Sorte'}">–</span>`
+            : zelle(fmtNum(e.verbrauch_l_100km, 2), f.verbrauch);
+          return `<tr>
+            <td>${fmtDate(e.datum)}</td><td class="num">${fmtNum(e.kilometerstand)}</td><td>${esc(e.kraftstoffart)}${e.nicht_voll ? ' <span class="muted">(nicht voll)</span>' : ''}</td>
+            <td class="num">${fmtNum(e.fuellmenge_liter, 2)} l</td><td class="num">${zelle(`${fmtNum(e.preis_pro_liter, 3)} €`, f.preis)}</td>
+            <td class="num">${fmtEur(e.gesamtpreis)}</td><td class="num">${verbrauch}</td>
             <td>${fuelPhotoLinks(e)}${erfasstVon(e)}</td>
-          </tr>`
-        )
+          </tr>`;
+        })
         .join('');
     }
 

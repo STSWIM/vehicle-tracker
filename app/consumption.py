@@ -42,6 +42,34 @@ def verbrauch_l_pro_100km(entries: list[FuelEntry], start_km: int | None = None)
     return gesamt_liter / gesamt_km * 100
 
 
+def verbrauch_je_tankung(entries: Iterable[FuelEntry], start_km: int | None = None) -> dict[int, float]:
+    """Verbrauch je Volltankung (entry.id -> l/100 km), Voll-zu-Voll getrennt
+    je Kraftstoff: Liter seit der vorigen Volltankung derselben Sorte
+    (inkl. Teil-Tankungen dazwischen) geteilt durch die km seitdem."""
+    nach_art: dict[str, list] = {}
+    for e in sorted(entries, key=lambda e: e.kilometerstand):
+        nach_art.setdefault(e.kraftstoffart.value, []).append(e)
+    result: dict[int, float] = {}
+    for art_entries in nach_art.values():
+        kette = list(art_entries)
+        if start_km is not None:
+            referenz = SimpleNamespace(id=None, kilometerstand=start_km, fuellmenge_liter=0.0, nicht_voll=False)
+            kette = [referenz, *(e for e in kette if e.kilometerstand > start_km)]
+        letzte_volle = None
+        liter_seitdem = 0.0
+        for e in kette:
+            if letzte_volle is not None:
+                liter_seitdem += e.fuellmenge_liter
+            if e.nicht_voll:
+                continue
+            if letzte_volle is not None and e.id is not None:
+                km = e.kilometerstand - letzte_volle.kilometerstand
+                if km > 0:
+                    result[e.id] = round(liter_seitdem / km * 100, 2)
+            letzte_volle, liter_seitdem = e, 0.0
+    return result
+
+
 def verbrauch_nach_kraftstoff(entries: Iterable[FuelEntry], start_km: int | None = None) -> dict[str, float]:
     """Voll-zu-Voll getrennt je Kraftstoff - bei bivalenten Fahrzeugen
     (LPG + Benzin) wuerde eine gemeinsame Kette die Tankungen vermischen."""

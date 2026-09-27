@@ -77,6 +77,8 @@ class FuelEntryOut(FuelEntryCreate):
     beleg_foto_pfad: str | None = None
     tacho_foto_pfad: str | None = None
     erfasst_von: str | None = None
+    # Verbrauch seit der vorigen Volltankung derselben Sorte (nur in der Liste)
+    verbrauch_l_100km: float | None = None
 
 
 class OtherCostCreate(BaseModel):

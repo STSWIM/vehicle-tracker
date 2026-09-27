@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.access import CurrentUser, accessible_vehicle_ids, get_accessible_vehicle, get_current_user
+from app.consumption import verbrauch_je_tankung
 from app.db import get_db
 from app.models import FuelEntry, Vehicle
 from app.photo_storage import (
@@ -31,7 +32,19 @@ def list_fuel_entries(
     q = select(FuelEntry).where(FuelEntry.vehicle_id.in_(accessible_vehicle_ids(user))).order_by(FuelEntry.datum)
     if vehicle_id is not None:
         q = q.where(FuelEntry.vehicle_id == vehicle_id)
-    return db.execute(q).scalars().all()
+    entries = db.execute(q).scalars().all()
+
+    # Verbrauch je Tankung fuer die Anzeige im Tankbuch, je Fahrzeug berechnet
+    nach_fahrzeug: dict[int, list[FuelEntry]] = {}
+    for e in entries:
+        nach_fahrzeug.setdefault(e.vehicle_id, []).append(e)
+    for vid, fahrzeug_entries in nach_fahrzeug.items():
+        vehicle = db.get(Vehicle, vid)
+        start_km = vehicle.kaufkilometerstand if vehicle and vehicle.bei_kauf_vollgetankt else None
+        verbrauch = verbrauch_je_tankung(fahrzeug_entries, start_km)
+        for e in fahrzeug_entries:
+            e.verbrauch_l_100km = verbrauch.get(e.id)
+    return entries
 
 
 @router.post("", response_model=FuelEntryOut, status_code=201)

@@ -197,3 +197,23 @@ def test_zeitraum_ohne_kauf_zaehlt_kaufpreis_nicht(client):
     assert s["gesamtkosten"] == 300 + 60
     assert s["zeitraum_von"] == "2023-01-01"
     assert s["zeitraum_bis"] == "2023-12-31"
+
+
+def test_verbrauch_je_tankung_in_der_liste(client):
+    """Tankbuch: Verbrauch seit der vorigen Volltankung derselben Sorte,
+    Teil-Tankungen zaehlen zur naechsten Volltankung."""
+    vehicle_id = _vehicle(client, kaufkilometerstand=None)
+    _fuel_art(client, vehicle_id, "2023-01-01", 1_000, 40.0, "LPG")
+    _fuel_art(client, vehicle_id, "2023-01-05", 1_100, 10.0, "Benzin")
+    response = client.post("/api/fuel-entries", json={
+        "vehicle_id": vehicle_id, "datum": "2023-01-10", "kilometerstand": 1_150, "kraftstoffart": "LPG",
+        "fuellmenge_liter": 10.0, "preis_pro_liter": 1.0, "gesamtpreis": 10.0, "nicht_voll": True,
+    })
+    assert response.status_code == 201
+    _fuel_art(client, vehicle_id, "2023-01-20", 1_300, 32.0, "LPG")
+
+    entries = {e["datum"]: e for e in client.get(f"/api/fuel-entries?vehicle_id={vehicle_id}").json()}
+    assert entries["2023-01-01"]["verbrauch_l_100km"] is None      # keine vorige Volltankung
+    assert entries["2023-01-05"]["verbrauch_l_100km"] is None      # erste Benzin-Tankung
+    assert entries["2023-01-10"]["verbrauch_l_100km"] is None      # nicht voll
+    assert entries["2023-01-20"]["verbrauch_l_100km"] == round(42.0 / 300 * 100, 2)
