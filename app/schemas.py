@@ -88,6 +88,9 @@ class OtherCostCreate(BaseModel):
     betrag: float
     beschreibung: str | None = None
     jaehrlich_wiederkehrend: bool = False
+    # None = Vorgabe der Kategorie (Versicherung/Steuer 12, Finanzierung 1),
+    # 0 = voll am Zahltag, sonst gleichmaessig ueber so viele Monate verteilt
+    laufzeit_monate: int | None = Field(None, ge=0, le=120)
     beleg_foto_pfad: str | None = None
     quelle: Quelle = Quelle.MANUELL
 
@@ -96,6 +99,19 @@ class OtherCostOut(OtherCostCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     erfasst_von: str | None = None
+    # tatsaechlich angewandte Laufzeit (Vorgabe der Kategorie aufgeloest)
+    laufzeit_effektiv: int = 0
+
+    @model_validator(mode="after")
+    def _laufzeit_aufloesen(self) -> OtherCostOut:
+        from app.cost_allocation import STANDARD_LAUFZEIT_MONATE
+
+        self.laufzeit_effektiv = (
+            self.laufzeit_monate
+            if self.laufzeit_monate is not None
+            else STANDARD_LAUFZEIT_MONATE.get(self.kategorie, 0)
+        )
+        return self
 
 
 class ReminderCreate(BaseModel):
@@ -201,3 +217,6 @@ class VehicleStats(BaseModel):
     anteil_benzin: float | None
     # offene Tankluecke (letzter bekannter km-Stand vs. letzte Tankung), s. Issue #12
     hinweise: list[str] = []
+    # im Voraus bezahlte, noch nicht angefallene Anteile (Versicherung,
+    # Steuer, ...) zum Ende des Zeitraums - bei Verkauf erstattungsfaehig
+    vorausbezahlt: float = 0.0

@@ -61,6 +61,7 @@ class ImportCostRow(BaseModel):
     jaehrlich_wiederkehrend: bool
     quelle: str
     duplikat: bool
+    laufzeit_monate: int | None = None
 
 
 class ImportKauf(BaseModel):

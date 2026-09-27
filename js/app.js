@@ -247,7 +247,9 @@
             </label>
             <label>Betrag (€) <input type="number" name="betrag" step="0.01" required></label>
             <label>Beschreibung <input type="text" name="beschreibung"></label>
+            <label>Gilt für (Monate) <input type="number" name="laufzeit_monate" min="0" max="120" placeholder="voll am Zahltag"></label>
             <label><input type="checkbox" name="jaehrlich_wiederkehrend"> jährlich wiederkehrend</label>
+            <div class="form-hint">Im Voraus bezahlte Posten (Versicherung, Steuer: 12 Monate, Finanzierung: 1 Monat) werden über ihre Laufzeit verteilt. In der Auswertung zählt nur der Anteil bis heute bzw. bis zum Verkauf – der Rest ist „im Voraus bezahlt“ und würde bei einem Verkauf erstattet. 0 oder leer = voll am Zahltag (z.B. Zulassung).</div>
             <button type="submit">Speichern</button>
             <div class="form-status" id="vt-other-cost-status"></div>
           </form>
@@ -297,7 +299,7 @@
       <div class="vt-tab-panel" data-panel="kosten" hidden>
         <div class="vt-scroll">
           <table id="vt-costs">
-            <thead><tr><th>Datum</th><th>Kategorie</th><th class="num">Betrag</th><th>Beschreibung</th><th></th><th></th></tr></thead>
+            <thead><tr><th>Datum</th><th>Kategorie</th><th class="num">Betrag</th><th>Laufzeit</th><th>Beschreibung</th><th></th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -970,7 +972,59 @@
       });
     }
     vehicleSubmit('vt-fuel-entry-form', '/api/fuel-entries', 'vt-fuel-entry-status', uploadFuelPhotos);
-    vehicleSubmit('vt-other-cost-form', '/api/other-costs', 'vt-other-cost-status');
+    // --- Sonstige Kosten: anlegen und bearbeiten --------------------------------
+    const STANDARD_LAUFZEIT = { Versicherung: 12, Steuer: 12, Finanzierung: 1 };
+    let editingCostId = null;
+    let costs = [];
+
+    function setCostLaufzeitDefault() {
+      const form = $('vt-other-cost-form');
+      const standard = STANDARD_LAUFZEIT[form.elements.kategorie.value];
+      form.elements.laufzeit_monate.value = standard ?? '';
+    }
+    $('vt-other-cost-form').elements.kategorie.addEventListener('change', setCostLaufzeitDefault);
+
+    function resetCostDialog() {
+      editingCostId = null;
+      $('vt-other-cost-form').reset();
+      setCostLaufzeitDefault();
+      document.querySelector('#vt-dlg-cost h2').textContent = 'Sonstige Kosten erfassen';
+    }
+    document.querySelector('[data-open-dialog="vt-dlg-cost"]').addEventListener('click', resetCostDialog);
+
+    onSubmit('vt-other-cost-form', async (form) => {
+      if (!currentVehicleId) return;
+      const editing = editingCostId !== null;
+      // leer = ausdruecklich "voll am Zahltag", nicht die Vorgabe der Kategorie
+      if (form.elements.laufzeit_monate.value === '') form.elements.laufzeit_monate.value = '0';
+      const payload = { vehicle_id: Number(currentVehicleId) };
+      const saved = await submitJson(
+        form, editing ? `${BASE}/api/other-costs/${editingCostId}` : `${BASE}/api/other-costs`,
+        payload, $('vt-other-cost-status'), editing ? 'PUT' : 'POST'
+      );
+      if (saved) {
+        resetCostDialog();
+        closeEntryDialogIfClean(form, $('vt-other-cost-status'));
+        loadVehicle(currentVehicleId);
+      }
+    });
+
+    content.addEventListener('click', (ev) => {
+      const edit = ev.target.closest('[data-cost-edit]');
+      if (!edit) return;
+      const c = costs.find((x) => x.id === Number(edit.dataset.costEdit));
+      if (!c) return;
+      const form = $('vt-other-cost-form');
+      form.reset();
+      ['datum', 'kategorie', 'betrag', 'beschreibung'].forEach((name) => { form.elements[name].value = c[name] ?? ''; });
+      form.elements.laufzeit_monate.value = c.laufzeit_effektiv || '';
+      form.elements.jaehrlich_wiederkehrend.checked = !!c.jaehrlich_wiederkehrend;
+      editingCostId = c.id;
+      document.querySelector('#vt-dlg-cost h2').textContent = 'Sonstige Kosten bearbeiten';
+      const dialog = $('vt-dlg-cost');
+      dialog.querySelectorAll('.form-status').forEach((el) => { el.textContent = ''; el.className = 'form-status'; });
+      dialog.showModal();
+    });
     vehicleSubmit('vt-logbook-form', '/api/logbook', 'vt-logbook-status');
     vehicleSubmit('vt-trip-form', '/api/trips', 'vt-trip-status');
 
@@ -1034,7 +1088,10 @@
         .map(([name, betrag]) => `${esc(name)}: ${fmtEur(betrag)}`)
         .join(' · ');
       const zeitraum = s.zeitraum_von ? `Zeitraum ${fmtDate(s.zeitraum_von)} – ${fmtDate(s.zeitraum_bis)}` : '';
-      $('vt-kategorien').innerHTML = [zeitraum, kategorien && `Laufende Kosten: ${kategorien}`].filter(Boolean).join('<br>');
+      const voraus = s.vorausbezahlt > 0
+        ? `Im Voraus bezahlt (noch nicht angefallen, bei Verkauf erstattungsfähig): ${fmtEur(s.vorausbezahlt)}`
+        : '';
+      $('vt-kategorien').innerHTML = [zeitraum, kategorien && `Laufende Kosten (anteilig): ${kategorien}`, voraus].filter(Boolean).join('<br>');
       renderHinweise(s.hinweise);
     }
 
@@ -1330,18 +1387,21 @@
       if (await deleteEntry(`${BASE}${target.dataset.delete}`)) loadVehicle(currentVehicleId);
     });
 
-    function renderCosts(costs) {
-      $('vt-costs-count').textContent = costs.length ? `(${costs.length})` : '';
-      document.querySelector('#vt-costs tbody').innerHTML = [...costs]
+    function renderCosts(list) {
+      costs = list;
+      $('vt-costs-count').textContent = list.length ? `(${list.length})` : '';
+      document.querySelector('#vt-costs tbody').innerHTML = [...list]
         .sort((a, b) => b.datum.localeCompare(a.datum))
         .map(
           (c) => `<tr>
             <td>${fmtDate(c.datum)}</td><td>${esc(c.kategorie)}${c.jaehrlich_wiederkehrend ? ' <span class="muted">(jährlich)</span>' : ''}</td>
-            <td class="num">${fmtEur(c.betrag)}</td><td>${esc(c.beschreibung)}</td>
-            <td>${erfasstVon(c)}</td><td>${deleteButton('/api/other-costs', c.id)}</td>
+            <td class="num">${fmtEur(c.betrag)}</td><td>${c.laufzeit_effektiv ? `${c.laufzeit_effektiv} Mon.` : '<span class="muted">einmalig</span>'}</td>
+            <td>${esc(c.beschreibung)}</td>
+            <td>${erfasstVon(c)}</td>
+            <td class="vt-rem-actions"><button type="button" class="link" data-cost-edit="${c.id}" title="Bearbeiten">✏️</button>${deleteButton('/api/other-costs', c.id)}</td>
           </tr>`
         )
-        .join('') || '<tr><td colspan="6" class="muted">Noch keine sonstigen Kosten erfasst.</td></tr>';
+        .join('') || '<tr><td colspan="7" class="muted">Noch keine sonstigen Kosten erfasst.</td></tr>';
     }
 
     function renderLogbook(entries) {

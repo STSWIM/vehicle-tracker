@@ -188,6 +188,9 @@ class OtherCost(Base):
     betrag: Mapped[float] = mapped_column(Float)
     beschreibung: Mapped[str | None] = mapped_column(String(300), nullable=True)
     jaehrlich_wiederkehrend: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Monate, die die Zahlung abdeckt (anteilige Verteilung, siehe
+    # app/cost_allocation.py): None = Vorgabe der Kategorie, 0 = voll am Zahltag
+    laufzeit_monate: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     beleg_foto_pfad: Mapped[str | None] = mapped_column(String(500), nullable=True)
     quelle: Mapped[Quelle] = mapped_column(Enum(Quelle), default=Quelle.MANUELL)

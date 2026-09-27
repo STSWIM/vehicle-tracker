@@ -62,6 +62,13 @@ class ImportOtherCost:
     beschreibung: str | None
     jaehrlich_wiederkehrend: bool
     quelle: str
+    # None = Vorgabe der Kategorie (app/cost_allocation.py), 0 = voll am Zahltag
+    laufzeit_monate: int | None = None
+
+
+# Einmalige Gebuehren, die in der Excel unter "Steuer" stehen, aber nicht wie
+# die Jahressteuer ueber 12 Monate verteilt werden (dort per Hand "=E6").
+EINMALIG_STICHWORTE = ("zulassung", "kennzeichen", "plakette", "ummeldung", "anmeldung", "abmeldung")
 
 
 @dataclass
@@ -379,6 +386,13 @@ def _parse_cost_sheet(title: str, rows: list[tuple], header: tuple[int, int, dic
                     beschreibung=text[:300] if text else None,
                     jaehrlich_wiederkehrend=jaehrlich,
                     quelle=where,
+                    laufzeit_monate=(
+                        0
+                        if kategorie == Kostenkategorie.STEUER
+                        and text
+                        and any(w in text.lower() for w in EINMALIG_STICHWORTE)
+                        else None
+                    ),
                 )
             )
 

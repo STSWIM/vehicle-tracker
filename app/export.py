@@ -329,12 +329,14 @@ def build_pdf(data: ExportData, stats: VehicleStats) -> bytes:
     zusammenfassung = [
         ("Gesamtkosten", _eur(stats.gesamtkosten)),
         ("Kraftstoffkosten", _eur(stats.gesamt_kraftstoffkosten)),
-        ("Laufende Kosten", _eur(stats.gesamt_sonstige_kosten)),
+        ("Laufende Kosten (anteilig)", _eur(stats.gesamt_sonstige_kosten)),
         (anschaffung_label, _eur(stats.anschaffungskosten)),
         ("Gefahrene km", f"{fmt_num(stats.gefahrene_km, 0, thousands=True)} km"),
         ("Kosten pro km", f"{fmt_num(stats.kosten_pro_km, 3)} €" if stats.kosten_pro_km is not None else "–"),
         ("Kosten pro Monat", _eur(stats.kosten_pro_monat)),
     ]
+    if stats.vorausbezahlt > 0:
+        zusammenfassung.append(("Im Voraus bezahlt (nicht eingerechnet)", _eur(stats.vorausbezahlt)))
     kv_table(zusammenfassung)
 
     if stats.kosten_nach_kategorie:
@@ -392,6 +394,8 @@ def build_pdf(data: ExportData, stats: VehicleStats) -> bytes:
         if any(c.kategorie == Kostenkategorie.EINMALIG for c in data.other_costs):
             hinweis("Kosten der Kategorie „Einmalig“ zählen in der Zusammenfassung zu den Anschaffungskosten, "
                     "nicht zu den laufenden Kosten.")
+        hinweis("Die Tabelle zeigt die gezahlten Beträge. In der Zusammenfassung zählen im Voraus bezahlte "
+                "Posten (Versicherung, Steuer, Finanzierung) nur anteilig für den Zeitraum.")
     else:
         hinweis("Keine sonstigen Kosten im Zeitraum.")
 

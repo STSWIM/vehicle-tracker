@@ -26,6 +26,7 @@ from app.consumption import verbrauch_nach_kraftstoff
 from app.db import get_db
 from app.models import Kostenkategorie, Kraftstoffart, Vehicle
 from app.schemas import VehicleStats
+from app.cost_allocation import anteil, vorausbezahlt
 from app.validation import pruefe_tankluecke
 
 router = APIRouter(prefix="/api/vehicles", tags=["stats"])
@@ -69,19 +70,27 @@ def compute_vehicle_stats(
     logbook = [entry for entry in vehicle.logbook_entries if im_zeitraum(entry.datum)]
 
     einmalig = [c for c in other_costs if c.kategorie == Kostenkategorie.EINMALIG]
-    laufend = [c for c in other_costs if c.kategorie != Kostenkategorie.EINMALIG]
+
+    # Laufende Kosten anteilig: im Voraus bezahlte Posten (Versicherung,
+    # Steuer, Finanzierung) zaehlen nur mit dem Teil, der in den Zeitraum
+    # faellt - hoechstens bis heute bzw. bis zum Verkauf (app/cost_allocation.py).
+    # Deshalb alle Posten betrachten, nicht nur die im Zeitraum bezahlten.
+    auswertung_bis = bis or vehicle.verkauft_am or datetime.date.today()
+    laufend_alle = [c for c in vehicle.other_costs if c.kategorie != Kostenkategorie.EINMALIG]
+    kosten_nach_kategorie: dict[str, float] = defaultdict(float)
+    for c in laufend_alle:
+        betrag = anteil(c, von, auswertung_bis)
+        if betrag:
+            kosten_nach_kategorie[c.kategorie.value] += betrag
+    vorausbezahlt_summe = sum(vorausbezahlt(c, auswertung_bis) for c in laufend_alle)
 
     kaufpreis = (vehicle.kaufpreis or 0.0) if kauf_im_zeitraum else 0.0
     anschaffungskosten = kaufpreis + sum(c.betrag for c in einmalig)
     gesamt_kraftstoffkosten = sum(e.gesamtpreis for e in fuel_entries)
-    gesamt_sonstige_kosten = sum(c.betrag for c in laufend)
+    gesamt_sonstige_kosten = sum(kosten_nach_kategorie.values())
     gesamtkosten = gesamt_kraftstoffkosten + gesamt_sonstige_kosten
     if mit_anschaffung:
         gesamtkosten += anschaffungskosten
-
-    kosten_nach_kategorie: dict[str, float] = defaultdict(float)
-    for c in laufend:
-        kosten_nach_kategorie[c.kategorie.value] += c.betrag
 
     km_punkte = [e.kilometerstand for e in fuel_entries]
     km_punkte += [km for t in trips for km in (t.km_start, t.km_ende)]
@@ -141,4 +150,5 @@ def compute_vehicle_stats(
         anteil_lpg=round(anteil_lpg, 3) if anteil_lpg is not None else None,
         anteil_benzin=round(anteil_benzin, 3) if anteil_benzin is not None else None,
         hinweise=hinweise,
+        vorausbezahlt=round(vorausbezahlt_summe, 2),
     )

@@ -34,6 +34,26 @@ def create_other_cost(
     return cost
 
 
+@router.put("/{cost_id}", response_model=OtherCostOut)
+def update_other_cost(
+    cost_id: int,
+    payload: OtherCostCreate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    cost = db.get(OtherCost, cost_id)
+    if cost is None:
+        raise HTTPException(404, "Eintrag nicht gefunden")
+    get_accessible_vehicle(db, cost.vehicle_id, user)
+    get_accessible_vehicle(db, payload.vehicle_id, user)
+    # Quelle und Foto bleiben beim Bearbeiten wie sie sind
+    for key, value in payload.model_dump(exclude={"quelle", "beleg_foto_pfad"}).items():
+        setattr(cost, key, value)
+    db.commit()
+    db.refresh(cost)
+    return cost
+
+
 @router.delete("/{cost_id}", status_code=204)
 def delete_other_cost(cost_id: int, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     cost = db.get(OtherCost, cost_id)

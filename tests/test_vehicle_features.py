@@ -194,7 +194,9 @@ def test_zeitraum_ohne_kauf_zaehlt_kaufpreis_nicht(client):
     vehicle_id = _setup_kosten(client)
     s = client.get(f"/api/vehicles/{vehicle_id}/stats?von=2023-01-01&bis=2023-12-31").json()
     assert s["anschaffungskosten"] == 0.0
-    assert s["gesamtkosten"] == 300 + 60
+    # Versicherung vom 15.01.2023 gilt ein Jahr: in 2023 fallen 351 von 365 Tagen an
+    assert s["gesamtkosten"] == round(300 * 351 / 365 + 60, 2)
+    assert s["vorausbezahlt"] == round(300 * 14 / 365, 2)
     assert s["zeitraum_von"] == "2023-01-01"
     assert s["zeitraum_bis"] == "2023-12-31"
 
@@ -217,3 +219,34 @@ def test_verbrauch_je_tankung_in_der_liste(client):
     assert entries["2023-01-05"]["verbrauch_l_100km"] is None      # erste Benzin-Tankung
     assert entries["2023-01-10"]["verbrauch_l_100km"] is None      # nicht voll
     assert entries["2023-01-20"]["verbrauch_l_100km"] == round(42.0 / 300 * 100, 2)
+
+
+# --- Anteilige Kosten ----------------------------------------------------------
+
+def test_versicherung_zaehlt_nur_anteilig_bis_heute(client):
+    import datetime
+
+    vehicle_id = _vehicle(client)
+    heute = datetime.date.today()
+    bezahlt = heute - datetime.timedelta(days=99)  # 100 Tage inkl. heute verbraucht
+    _cost(client, vehicle_id, bezahlt.isoformat(), "Versicherung", 365.0)
+    s = client.get(f"/api/vehicles/{vehicle_id}/stats").json()
+    tage_gesamt = (bezahlt.replace(year=bezahlt.year + 1) - bezahlt).days
+    assert s["kosten_nach_kategorie"]["Versicherung"] == round(365.0 * 100 / tage_gesamt, 2)
+    assert s["vorausbezahlt"] == round(365.0 - 365.0 * 100 / tage_gesamt, 2)
+
+
+def test_laufzeit_bearbeiten(client):
+    vehicle_id = _vehicle(client)
+    response = client.post("/api/other-costs", json={
+        "vehicle_id": vehicle_id, "datum": "2022-06-24", "kategorie": "Steuer", "betrag": 45.9,
+        "beschreibung": "Zulassung",
+    })
+    cost = response.json()
+    assert cost["laufzeit_monate"] is None and cost["laufzeit_effektiv"] == 12
+    response = client.put(f"/api/other-costs/{cost['id']}", json={
+        "vehicle_id": vehicle_id, "datum": "2022-06-24", "kategorie": "Steuer", "betrag": 45.9,
+        "beschreibung": "Zulassung", "laufzeit_monate": 0,
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["laufzeit_effektiv"] == 0
