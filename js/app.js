@@ -45,6 +45,9 @@
       /* Immer die volle Breite nutzen statt sich nach dem Inhalt zu richten -
          sonst verschiebt sich die Karte, sobald ein breiter Bereich aufgeht. */
       box-sizing: border-box; width: calc(100% - 1.5rem); flex: 1 1 auto; min-width: 0;
+      /* Nextcloud laesst die eingebettete Seite selbst nicht scrollen - die App
+         scrollt deshalb in sich, Hoehe setzt fitRootHeight() passend zum Fenster. */
+      overflow-y: auto;
     }
     #vehicle-tracker-root header { padding: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     #vehicle-tracker-root h3 { margin: 1.25rem 0 0.25rem; font-size: 1rem; }
@@ -66,7 +69,7 @@
     #vehicle-tracker-root th, #vehicle-tracker-root td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border, #eee); }
     #vehicle-tracker-root td.num, #vehicle-tracker-root th.num { text-align: right; }
     /* Tankbuch: eigener Scrollbereich, Kopfzeile bleibt stehen */
-    #vehicle-tracker-root .vt-scroll { max-height: 60vh; overflow: auto; margin-top: 0.5rem; border: 1px solid var(--color-border, #eee); border-radius: 8px; }
+    #vehicle-tracker-root .vt-scroll { max-height: 75vh; overflow: auto; margin-top: 0.5rem; border: 1px solid var(--color-border, #eee); border-radius: 8px; }
     #vehicle-tracker-root .vt-scroll table { margin-top: 0; }
     #vehicle-tracker-root .vt-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--color-main-background, #fff); box-shadow: 0 1px 0 var(--color-border, #eee); }
     #vehicle-tracker-root .vt-count { font-weight: normal; opacity: 0.6; font-size: 0.9rem; }
@@ -74,10 +77,36 @@
     #vehicle-tracker-root .vt-legend { font-size: 0.8rem; opacity: 0.85; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     /* Einordnung je Spritsorte: gruen = guenstig/sparsam, rot = teuer/durstig */
     #vehicle-tracker-root .vt-val { padding: 0.05rem 0.35rem; border-radius: 4px; white-space: nowrap; }
-    #vehicle-tracker-root .vt-val.gut { background: color-mix(in srgb, var(--color-success, #2d7b41) 16%, transparent); }
-    #vehicle-tracker-root .vt-val.schlecht { background: color-mix(in srgb, var(--color-error, #b3261e) 16%, transparent); }
-    #vehicle-tracker-root .vt-val.gut.stark { background: color-mix(in srgb, var(--color-success, #2d7b41) 38%, transparent); font-weight: 700; }
-    #vehicle-tracker-root .vt-val.schlecht.stark { background: color-mix(in srgb, var(--color-error, #b3261e) 38%, transparent); font-weight: 700; }
+    #vehicle-tracker-root .vt-val.gut { background: rgba(46, 160, 67, 0.30); }
+    #vehicle-tracker-root .vt-val.schlecht { background: rgba(220, 53, 69, 0.28); }
+    #vehicle-tracker-root .vt-val.gut.stark { background: rgba(46, 160, 67, 0.62); font-weight: 700; }
+    #vehicle-tracker-root .vt-val.schlecht.stark { background: rgba(220, 53, 69, 0.60); font-weight: 700; }
+    /* Erfassen: Knoepfe oeffnen die Formulare als Popup */
+    #vehicle-tracker-root .vt-add-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
+    .vt-entry-dialog {
+      border: none; border-radius: var(--border-radius-large, 10px); padding: 1.1rem 1.4rem 1.3rem;
+      width: min(720px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); box-sizing: border-box;
+      background: var(--color-main-background, #fff); color: var(--color-main-text, #222);
+      font-family: var(--font-face, system-ui, sans-serif); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    /* wie beim Fahrzeug-Popup: gegen Nextclouds eigenes <dialog>-CSS absichern */
+    .vt-entry-dialog:not([open]) { display: none !important; }
+    .vt-entry-dialog[open] { display: block; position: fixed; inset: 0; margin: auto; height: fit-content; overflow: auto; z-index: 10000; }
+    .vt-entry-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+    .vt-entry-dialog .vt-dlg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; }
+    .vt-entry-dialog h2 { margin: 0; font-size: 1.15rem; }
+    .vt-entry-dialog .vt-dlg-close { background: none; border: none; font-size: 1.1rem; cursor: pointer; min-height: 0; padding: 0.2rem 0.5rem; }
+    .vt-entry-dialog form { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.7rem 0.9rem; align-items: end; }
+    .vt-entry-dialog label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.2rem; }
+    .vt-entry-dialog label:has(> input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+    .vt-entry-dialog input[type="date"] { min-width: 11em; }
+    .vt-entry-dialog input[type="file"] { max-width: 100%; }
+    .vt-entry-dialog .form-hint, .vt-entry-dialog .form-status { grid-column: 1 / -1; }
+    .vt-entry-dialog .form-hint { font-size: 0.8rem; opacity: 0.75; }
+    .vt-entry-dialog .form-status { font-size: 0.85rem; }
+    .vt-entry-dialog .form-status.error { color: var(--color-error-text, #b3261e); }
+    .vt-entry-dialog .form-status.warning { color: var(--color-warning-text, #9a6700); }
+    .vt-entry-dialog button[type="submit"] { justify-self: start; }
     #vehicle-tracker-root .auswertung-controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding: 0.5rem 0; }
     #vehicle-tracker-root .auswertung-controls label { display: flex; gap: 0.35rem; align-items: center; }
     #vehicle-tracker-root .auswertung-controls input[type="date"] { min-width: 11em; }
@@ -164,9 +193,16 @@
       <div class="vt-hinweise" id="vt-hinweise" hidden></div>
 
       <h3>Erfassen</h3>
-      <details class="manual-entry">
-        <summary>Tankbeleg</summary>
-        <div class="section-body">
+      <div class="vt-add-buttons">
+        <button type="button" data-open-dialog="vt-dlg-fuel">＋ Tankbeleg</button>
+        <button type="button" data-open-dialog="vt-dlg-cost">＋ Sonstige Kosten</button>
+        <button type="button" data-open-dialog="vt-dlg-logbook">＋ Logbucheintrag</button>
+        <button type="button" data-open-dialog="vt-dlg-trip">＋ Fahrt</button>
+        <span class="form-status" id="vt-add-status" role="status"></span>
+      </div>
+
+      <dialog class="vt-entry-dialog" id="vt-dlg-fuel">
+        <div class="vt-dlg-head"><h2>Tankbeleg erfassen</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>
           <form id="vt-fuel-entry-form">
             <label>Datum <input type="date" name="datum" required></label>
             <label>Kilometerstand <input type="number" name="kilometerstand" min="0" required></label>
@@ -189,12 +225,10 @@
             <div class="form-hint">Zwei von Menge, Preis/l und Gesamtpreis eingeben – der dritte Wert wird berechnet (kursiv).</div>
             <div class="form-status" id="vt-fuel-entry-status"></div>
           </form>
-        </div>
-      </details>
+      </dialog>
 
-      <details class="manual-entry">
-        <summary>Sonstige Kosten</summary>
-        <div class="section-body">
+      <dialog class="vt-entry-dialog" id="vt-dlg-cost">
+        <div class="vt-dlg-head"><h2>Sonstige Kosten erfassen</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>
           <form id="vt-other-cost-form">
             <label>Datum <input type="date" name="datum" required></label>
             <label>Kategorie
@@ -216,12 +250,10 @@
             <button type="submit">Speichern</button>
             <div class="form-status" id="vt-other-cost-status"></div>
           </form>
-        </div>
-      </details>
+      </dialog>
 
-      <details class="manual-entry">
-        <summary>Wartungslogbuch</summary>
-        <div class="section-body">
+      <dialog class="vt-entry-dialog" id="vt-dlg-logbook">
+        <div class="vt-dlg-head"><h2>Logbucheintrag</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>
           <form id="vt-logbook-form">
             <label>Datum <input type="date" name="datum" required></label>
             <label>km-Stand <input type="number" name="kilometerstand" min="0"></label>
@@ -230,16 +262,10 @@
             <button type="submit">Eintragen</button>
             <div class="form-status" id="vt-logbook-status"></div>
           </form>
-          <table id="vt-logbook">
-            <thead><tr><th>Datum</th><th class="num">km</th><th>Eintrag</th><th>Notiz</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </details>
+      </dialog>
 
-      <details class="manual-entry">
-        <summary>Fahrtenbuch</summary>
-        <div class="section-body">
+      <dialog class="vt-entry-dialog" id="vt-dlg-trip">
+        <div class="vt-dlg-head"><h2>Fahrt erfassen</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>
           <form id="vt-trip-form">
             <label>Datum <input type="date" name="datum" required></label>
             <label>Start <input type="text" name="start" required></label>
@@ -258,6 +284,21 @@
             <div class="form-hint">Hinweis: Da Einträge nachträglich änderbar sind, ersetzt dieses Fahrtenbuch kein vom Finanzamt anerkanntes.</div>
             <div class="form-status" id="vt-trip-status"></div>
           </form>
+      </dialog>
+
+      <details class="manual-entry">
+        <summary>Wartungslogbuch</summary>
+        <div class="section-body">
+          <table id="vt-logbook">
+            <thead><tr><th>Datum</th><th class="num">km</th><th>Eintrag</th><th>Notiz</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+
+      <details class="manual-entry">
+        <summary>Fahrtenbuch</summary>
+        <div class="section-body">
           <div class="kategorien" id="vt-trip-summen"></div>
           <table id="vt-trips">
             <thead><tr><th>Datum</th><th>Start</th><th>Ziel</th><th class="num">km Start</th><th class="num">km Ende</th><th class="num">Strecke</th><th>Zweck</th><th></th></tr></thead>
@@ -373,6 +414,19 @@
       document.querySelector('#vehicle-tracker-root .vt-layout').classList.add('no-map');
       $('vt-map-toggle').remove();
       map = null;
+    }
+
+    // App-Bereich genau so hoch wie der sichtbare Rest des Fensters, damit man
+    // bis zum Tankbuch-Ende scrollen kann (Nextcloud schneidet sonst unten ab).
+    {
+      const root = $('vehicle-tracker-root');
+      const fitRootHeight = () => {
+        const top = Math.max(root.getBoundingClientRect().top, 0);
+        root.style.maxHeight = `${Math.max(320, window.innerHeight - top - 12)}px`;
+      };
+      fitRootHeight();
+      setTimeout(fitRootHeight, 300);
+      window.addEventListener('resize', fitRootHeight);
     }
 
     // Karte ein-/ausblenden; die Wahl merkt sich der Browser. Ohne gemerkte
@@ -836,6 +890,39 @@
     }
     setupFuelAutoCalc($('vt-fuel-entry-form'));
 
+    // --- Erfassen-Popups -----------------------------------------------------
+    function openEntryDialog(dialog) {
+      if (!currentVehicleId) return;
+      dialog.querySelectorAll('.form-status').forEach((el) => { el.textContent = ''; el.className = 'form-status'; });
+      // Datum mit heute vorbelegen, wenn noch leer
+      const datum = dialog.querySelector('input[type="date"][name="datum"]');
+      if (datum && !datum.value) datum.value = new Date().toISOString().slice(0, 10);
+      dialog.showModal();
+    }
+
+    content.addEventListener('click', (ev) => {
+      const opener = ev.target.closest('[data-open-dialog]');
+      if (opener) openEntryDialog($(opener.dataset.openDialog));
+      const close = ev.target.closest('.vt-dlg-close');
+      if (close) close.closest('dialog').close();
+    });
+
+    let addStatusTimer = null;
+    function showAddStatus(message) {
+      showFormStatus($('vt-add-status'), 'success', message);
+      clearTimeout(addStatusTimer);
+      addStatusTimer = setTimeout(() => { $('vt-add-status').textContent = ''; }, 4000);
+    }
+
+    // Nach dem Speichern schliessen - ausser es gibt eine Warnung oder einen
+    // Fehler (z.B. "fehlt ein Tankbeleg?"), die soll man im Popup noch lesen.
+    function closeEntryDialogIfClean(form, statusEl) {
+      const dialog = form.closest('dialog');
+      if (!dialog || statusEl.classList.contains('warning') || statusEl.classList.contains('error')) return;
+      dialog.close();
+      showAddStatus('✅ Gespeichert.');
+    }
+
     function vehicleSubmit(formId, path, statusId, afterSave) {
       onSubmit(formId, async (form) => {
         if (!currentVehicleId) return;
@@ -845,6 +932,7 @@
         if (saved) {
           if (afterSave) await afterSave(saved, $(statusId));
           form.reset();
+          closeEntryDialogIfClean(form, $(statusId));
           loadVehicle(currentVehicleId);
         }
       });
@@ -1267,12 +1355,30 @@
         </table>
       </div>`;
     {
-      const tankbuchHeading = $('vt-entries') && $('vt-entries').previousElementSibling;
-      if (tankbuchHeading && tankbuchHeading.tagName === 'H3') {
+      const tankbuchHeading = $('vt-entries-count') && $('vt-entries-count').closest('h3');
+      if (tankbuchHeading) {
         tankbuchHeading.parentNode.insertBefore(reminderSection, tankbuchHeading);
       } else {
         document.querySelector('#vehicle-tracker-root .vt-main').appendChild(reminderSection);
       }
+    }
+    // Formular wie die anderen Erfassen-Formulare als Popup
+    const reminderDialog = document.createElement('dialog');
+    reminderDialog.className = 'vt-entry-dialog';
+    reminderDialog.id = 'vt-dlg-reminder';
+    reminderDialog.innerHTML = '<div class="vt-dlg-head"><h2 id="vt-reminder-dlg-title">Erinnerung anlegen</h2><button type="button" class="vt-dlg-close" title="Schließen">✕</button></div>';
+    reminderDialog.appendChild($('vt-reminder-form'));
+    reminderSection.after(reminderDialog);
+    {
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.dataset.openDialog = 'vt-dlg-reminder';
+      addButton.textContent = '＋ Erinnerung';
+      $('vt-add-status').before(addButton);
+      addButton.addEventListener('click', () => {
+        resetReminderForm();
+        $('vt-reminder-dlg-title').textContent = 'Erinnerung anlegen';
+      });
     }
 
     const reminderBadge = document.createElement('button');
@@ -1382,6 +1488,7 @@
     $('vt-reminder-cancel').addEventListener('click', () => {
       resetReminderForm();
       $('vt-reminder-status').textContent = '';
+      reminderDialog.close();
     });
 
     onSubmit('vt-reminder-form', async (form) => {
@@ -1396,6 +1503,7 @@
       );
       if (saved) {
         resetReminderForm();
+        closeEntryDialogIfClean(form, $('vt-reminder-status'));
         loadReminders(currentVehicleId);
       }
     });
@@ -1413,7 +1521,8 @@
         $('vt-reminder-submit').textContent = 'Änderung speichern';
         $('vt-reminder-cancel').hidden = false;
         $('vt-reminder-status').textContent = '';
-        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        $('vt-reminder-dlg-title').textContent = 'Erinnerung bearbeiten';
+        reminderDialog.showModal();
         return;
       }
 
