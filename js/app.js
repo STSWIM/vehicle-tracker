@@ -1035,6 +1035,14 @@
         const auswahl = radio.value === 'auswahl' && radio.checked;
         $('vt-von').disabled = !auswahl;
         $('vt-bis').disabled = !auswahl;
+        // Vorbelegung: das letzte Jahr bis heute
+        if (auswahl && !$('vt-von').value && !$('vt-bis').value) {
+          const heute = new Date();
+          const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const vorEinemJahr = new Date(heute.getFullYear() - 1, heute.getMonth(), heute.getDate());
+          $('vt-von').value = iso(vorEinemJahr);
+          $('vt-bis').value = iso(heute);
+        }
         loadStats();
       });
     });
