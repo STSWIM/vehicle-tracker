@@ -96,6 +96,7 @@
     #vehicle-tracker-root .vt-seg button { border: none; border-radius: 0; background: none; padding: 0.3rem 0.8rem; min-height: 0; cursor: pointer; }
     #vehicle-tracker-root .vt-seg button.active { background: var(--color-primary-element, #0082c9); color: var(--color-primary-element-text, #fff); }
     #vehicle-tracker-root .u-legend { font-size: 0.8rem; }
+    #vehicle-tracker-root .vt-trend-toggle { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; margin: 0.3rem 0 0.2rem; }
     /* Erfassen: Knoepfe oeffnen die Formulare als Popup */
     #vehicle-tracker-root .vt-add-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
     .vt-entry-dialog {
@@ -306,6 +307,7 @@
       </div>
 
       <div class="vt-tab-panel" data-panel="diagramme" hidden>
+        <label class="vt-trend-toggle"><input type="checkbox" id="vt-trend"> Trendlinien anzeigen (linear)</label>
         <div class="vt-chart-head">
           <h4>Gefahrene Kilometer</h4>
           <div class="vt-seg" role="group" aria-label="Zeiteinheit">
@@ -1334,6 +1336,40 @@
       return getComputedStyle($('vehicle-tracker-root')).color || '#222';
     }
 
+    // --- Trendlinien (lineare Regression ueber die Zeit) ---
+    let trendAn = false;
+    try { trendAn = localStorage.getItem('vt-trend') === '1'; } catch (e) { /* ohne Speicher */ }
+    $('vt-trend').checked = trendAn;
+    $('vt-trend').addEventListener('change', () => {
+      trendAn = $('vt-trend').checked;
+      try { localStorage.setItem('vt-trend', trendAn ? '1' : '0'); } catch (e) { /* ohne Speicher */ }
+      if (chartCache) renderCharts();
+    });
+
+    const SEKUNDEN_PRO_JAHR = 365.25 * 86400;
+
+    // Kleinste Quadrate; liefert die Trendwerte fuer alle x innerhalb des
+    // Bereichs der echten Werte (ausserhalb null) und die Steigung pro Jahr.
+    function trendReihe(xs, ys) {
+      const pts = xs.map((x, i) => [x, ys[i]]).filter(([, y]) => y !== null && y !== undefined);
+      if (pts.length < 2) return null;
+      const n = pts.length;
+      const mx = pts.reduce((s, [x]) => s + x, 0) / n;
+      const my = pts.reduce((s, [, y]) => s + y, 0) / n;
+      const sxx = pts.reduce((s, [x]) => s + (x - mx) ** 2, 0);
+      if (!sxx) return null;
+      const b = pts.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0) / sxx;
+      const a = my - b * mx;
+      const [x0, x1] = [pts[0][0], pts[n - 1][0]];
+      return { werte: xs.map((x) => (x >= x0 && x <= x1 ? a + b * x : null)), proJahr: b * SEKUNDEN_PRO_JAHR };
+    }
+
+    function trendSerie(label, farbe) {
+      return { label, stroke: farbe, width: 1.5, dash: [6, 4], spanGaps: true, points: { show: false } };
+    }
+
+    const mitVorzeichen = (v, stellen) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmtNum(Math.abs(v), stellen)}`;
+
     function makeChart(key, el, opts, data) {
       if (charts[key]) charts[key].destroy();
       el.innerHTML = '';
@@ -1365,15 +1401,25 @@
         jahr: (ts) => String(new Date(ts * 1000).getFullYear()),
       }[kmGranularitaet];
       const data = [rows.map((r) => toTs(r[0])), rows.map((r) => r[1])];
+      const series = [
+        { label: { tag: 'Tag', monat: 'Monat', jahr: 'Jahr' }[kmGranularitaet], value: (u, v) => (v == null ? '–' : label(v)) },
+        {
+          label: 'Gefahrene km', stroke: '#0082c9', fill: 'rgba(0,130,201,0.55)', width: 1,
+          paths: window.uPlot.paths.bars({ size: [0.85, 80] }), points: { show: false },
+          value: (u, v) => (v == null ? '–' : `${fmtNum(v, 0)} km`),
+        },
+      ];
+      const trend = trendAn && trendReihe(data[0], data[1]);
+      if (trend) {
+        const einheit = { tag: 'km/Tag', monat: 'km/Monat', jahr: 'km/Jahr' }[kmGranularitaet];
+        data.push(trend.werte);
+        series.push({
+          ...trendSerie(`Trend (${mitVorzeichen(trend.proJahr, 0)} ${einheit} pro Jahr)`, '#e65100'),
+          value: (u, v) => (v == null ? '–' : `${fmtNum(v, 0)} km`),
+        });
+      }
       makeChart('km', el, {
-        series: [
-          { label: { tag: 'Tag', monat: 'Monat', jahr: 'Jahr' }[kmGranularitaet], value: (u, v) => (v == null ? '–' : label(v)) },
-          {
-            label: 'Gefahrene km', stroke: '#0082c9', fill: 'rgba(0,130,201,0.55)', width: 1,
-            paths: window.uPlot.paths.bars({ size: [0.85, 80] }), points: { show: false },
-            value: (u, v) => (v == null ? '–' : `${fmtNum(v, 0)} km`),
-          },
-        ],
+        series,
         axes: [{}, { values: (u, vals) => vals.map((v) => fmtNum(v, 0)), size: 60 }],
         scales: { x: { time: true } },
       }, data);
@@ -1410,15 +1456,28 @@
         delete charts[key];
         return;
       }
+      const wert = (u, v) => (v == null ? '–' : `${fmtNum(v, stellen)} ${einheit}`);
+      const series = [
+        { label: 'Datum', value: (u, v) => (v == null ? '–' : new Date(v * 1000).toLocaleDateString('de-DE')) },
+        ...sorten.map((s) => ({
+          label: s, stroke: SORTEN_FARBEN[s] || '#555', width: 2, spanGaps: true,
+          points: { show: true, size: 5, fill: SORTEN_FARBEN[s] || '#555' },
+          value: wert,
+        })),
+      ];
+      if (trendAn) {
+        sorten.forEach((s, i) => {
+          const trend = trendReihe(data[0], data[i + 1]);
+          if (!trend) return;
+          data.push(trend.werte);
+          series.push({
+            ...trendSerie(`${s} Trend (${mitVorzeichen(trend.proJahr, stellen)} ${einheit} pro Jahr)`, SORTEN_FARBEN[s] || '#555'),
+            value: wert,
+          });
+        });
+      }
       makeChart(key, el, {
-        series: [
-          { label: 'Datum', value: (u, v) => (v == null ? '–' : new Date(v * 1000).toLocaleDateString('de-DE')) },
-          ...sorten.map((s) => ({
-            label: s, stroke: SORTEN_FARBEN[s] || '#555', width: 2, spanGaps: true,
-            points: { show: true, size: 5, fill: SORTEN_FARBEN[s] || '#555' },
-            value: (u, v) => (v == null ? '–' : `${fmtNum(v, stellen)} ${einheit}`),
-          })),
-        ],
+        series,
         axes: [{}, { values: (u, vals) => vals.map((v) => fmtNum(v, stellen === 3 ? 2 : 1)), size: 55 }],
         scales: { x: { time: true } },
         cursor: { sync: { key: 'vt-sorten' } },
