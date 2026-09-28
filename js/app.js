@@ -88,6 +88,14 @@
     #vehicle-tracker-root .vt-tabs button:hover { opacity: 1; background: var(--color-background-hover, #f2f2f2); }
     #vehicle-tracker-root .vt-tabs button.active { opacity: 1; font-weight: 700; color: var(--color-main-text, #222); border-bottom: 3px solid var(--color-primary-element, #0082c9); }
     #vehicle-tracker-root .vt-tab-panel .vt-scroll { margin-top: 0.4rem; }
+    /* Diagramme */
+    #vehicle-tracker-root .vt-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    #vehicle-tracker-root [data-panel="diagramme"] h4 { margin: 1rem 0 0.3rem; font-size: 0.95rem; }
+    #vehicle-tracker-root .vt-chart { width: 100%; min-height: 280px; }
+    #vehicle-tracker-root .vt-seg { display: inline-flex; border: 1px solid var(--color-border, #ddd); border-radius: 8px; overflow: hidden; }
+    #vehicle-tracker-root .vt-seg button { border: none; border-radius: 0; background: none; padding: 0.3rem 0.8rem; min-height: 0; cursor: pointer; }
+    #vehicle-tracker-root .vt-seg button.active { background: var(--color-primary-element, #0082c9); color: var(--color-primary-element-text, #fff); }
+    #vehicle-tracker-root .u-legend { font-size: 0.8rem; }
     /* Erfassen: Knoepfe oeffnen die Formulare als Popup */
     #vehicle-tracker-root .vt-add-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.9rem; }
     .vt-entry-dialog {
@@ -291,9 +299,27 @@
 
       <div class="vt-tabs" role="tablist">
         <button type="button" role="tab" data-tab="tank">Tankbuch <span class="vt-count" id="vt-entries-count"></span></button>
+        <button type="button" role="tab" data-tab="diagramme">Diagramme</button>
         <button type="button" role="tab" data-tab="kosten">Sonstige Kosten <span class="vt-count" id="vt-costs-count"></span></button>
         <button type="button" role="tab" data-tab="wartung">Wartungslogbuch <span class="vt-count" id="vt-logbook-count"></span></button>
         <button type="button" role="tab" data-tab="fahrten">Fahrtenbuch <span class="vt-count" id="vt-trips-count"></span></button>
+      </div>
+
+      <div class="vt-tab-panel" data-panel="diagramme" hidden>
+        <div class="vt-chart-head">
+          <h4>Gefahrene Kilometer</h4>
+          <div class="vt-seg" role="group" aria-label="Zeiteinheit">
+            <button type="button" data-km-gran="jahr">Jahr</button>
+            <button type="button" data-km-gran="monat" class="active">Monat</button>
+            <button type="button" data-km-gran="tag">Tag</button>
+          </div>
+        </div>
+        <div class="vt-chart" id="vt-chart-km"></div>
+        <h4>Spritverbrauch (l/100 km)</h4>
+        <div class="vt-chart" id="vt-chart-verbrauch"></div>
+        <h4>Spritpreis (€/l)</h4>
+        <div class="vt-chart" id="vt-chart-preis"></div>
+        <div class="form-hint">Zum Vergrößern mit der Maus einen Bereich aufziehen, Doppelklick zeigt wieder alles. Verbrauch und Preis zoomen gemeinsam. Gefahrene km werden zwischen zwei bekannten km-Ständen gleichmäßig auf die Tage verteilt.</div>
       </div>
 
       <div class="vt-tab-panel" data-panel="kosten" hidden>
@@ -935,6 +961,7 @@
       });
       document.querySelectorAll('#vehicle-tracker-root .vt-tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== name; });
       try { localStorage.setItem('vt-tab', name); } catch (e) { /* ohne Speicher */ }
+      if (name === 'diagramme') renderCharts();
     }
     content.addEventListener('click', (ev) => {
       const tab = ev.target.closest('#vehicle-tracker-root .vt-tabs [data-tab]');
@@ -1279,6 +1306,161 @@
       if (fehler.length) showFormStatus(statusEl, 'error', `Eintrag gespeichert, Foto nicht: ${fehler.join(' / ')}`);
     }
 
+    // === Diagramme ===========================================================
+    // uPlot (vendored, Nextcloud erlaubt keine fremden Skript-Hosts) wird erst
+    // beim ersten Oeffnen des Reiters geladen. Zoomen: Bereich aufziehen,
+    // Doppelklick setzt zurueck (uPlot-Standard).
+    const SORTEN_FARBEN = { LPG: '#2e7d32', Benzin: '#d32f2f', Diesel: '#6d4c41', Strom: '#1565c0' };
+    let chartCache = null;
+    let chartVehicleId = null;
+    let kmGranularitaet = 'monat';
+    let uplotReady = null;
+    const charts = {};
+
+    function ensureUplot() {
+      if (window.uPlot) return Promise.resolve();
+      if (!uplotReady) {
+        loadStylesheet(`${BASE}/js/vendor/uplot/uPlot.min.css`);
+        uplotReady = loadScript(`${BASE}/js/vendor/uplot/uPlot.iife.min.js`);
+      }
+      return uplotReady;
+    }
+
+    const tsTag = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d || 1).getTime() / 1000; };
+    const tsMonat = (ym) => tsTag(`${ym}-01`);
+    const tsJahr = (y) => tsTag(`${y}-01-01`);
+
+    function achsenFarbe() {
+      return getComputedStyle($('vehicle-tracker-root')).color || '#222';
+    }
+
+    function makeChart(key, el, opts, data) {
+      if (charts[key]) charts[key].destroy();
+      el.innerHTML = '';
+      const farbe = achsenFarbe();
+      opts.width = Math.max(300, el.clientWidth);
+      opts.height = 260;
+      opts.axes = (opts.axes || [{}, {}]).map((a) => ({
+        stroke: farbe,
+        grid: { stroke: 'rgba(128,128,128,0.18)' },
+        ticks: { stroke: 'rgba(128,128,128,0.3)' },
+        ...a,
+      }));
+      charts[key] = new window.uPlot(opts, data, el);
+      return charts[key];
+    }
+
+    function renderKmChart() {
+      const el = $('vt-chart-km');
+      const rows = chartCache.km[kmGranularitaet];
+      if (!rows.length) {
+        el.innerHTML = '<p class="muted">Noch zu wenige km-Stände für ein Diagramm.</p>';
+        delete charts.km;
+        return;
+      }
+      const toTs = { tag: tsTag, monat: tsMonat, jahr: tsJahr }[kmGranularitaet];
+      const label = {
+        tag: (ts) => new Date(ts * 1000).toLocaleDateString('de-DE'),
+        monat: (ts) => new Date(ts * 1000).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }),
+        jahr: (ts) => String(new Date(ts * 1000).getFullYear()),
+      }[kmGranularitaet];
+      const data = [rows.map((r) => toTs(r[0])), rows.map((r) => r[1])];
+      makeChart('km', el, {
+        series: [
+          { label: { tag: 'Tag', monat: 'Monat', jahr: 'Jahr' }[kmGranularitaet], value: (u, v) => (v == null ? '–' : label(v)) },
+          {
+            label: 'Gefahrene km', stroke: '#0082c9', fill: 'rgba(0,130,201,0.55)', width: 1,
+            paths: window.uPlot.paths.bars({ size: [0.85, 80] }), points: { show: false },
+            value: (u, v) => (v == null ? '–' : `${fmtNum(v, 0)} km`),
+          },
+        ],
+        axes: [{}, { values: (u, vals) => vals.map((v) => fmtNum(v, 0)), size: 60 }],
+        scales: { x: { time: true } },
+      }, data);
+    }
+
+    // Verbrauch und Preis: gemeinsame x-Achse ueber alle Sorten, Luecken
+    // werden ueberbrueckt; Zoom wird zwischen beiden Diagrammen synchronisiert.
+    function sortenDaten(proSorte) {
+      const sorten = Object.keys(proSorte);
+      const alleTage = [...new Set(sorten.flatMap((s) => proSorte[s].map((r) => r[0])))].sort();
+      const index = new Map(alleTage.map((t, i) => [t, i]));
+      const reihen = sorten.map((s) => {
+        const werte = new Array(alleTage.length).fill(null);
+        proSorte[s].forEach(([t, v]) => { werte[index.get(t)] = v; });
+        return werte;
+      });
+      return { sorten, data: [alleTage.map(tsTag), ...reihen] };
+    }
+
+    let zoomSyncAktiv = false;
+    function zoomSync(andererKey) {
+      return (u, key) => {
+        if (key !== 'x' || zoomSyncAktiv || !charts[andererKey]) return;
+        zoomSyncAktiv = true;
+        charts[andererKey].setScale('x', { min: u.scales.x.min, max: u.scales.x.max });
+        zoomSyncAktiv = false;
+      };
+    }
+
+    function renderSortenChart(key, el, proSorte, einheit, stellen, andererKey) {
+      const { sorten, data } = sortenDaten(proSorte);
+      if (!sorten.length || data[0].length < 2) {
+        el.innerHTML = '<p class="muted">Noch zu wenige Tankungen für ein Diagramm.</p>';
+        delete charts[key];
+        return;
+      }
+      makeChart(key, el, {
+        series: [
+          { label: 'Datum', value: (u, v) => (v == null ? '–' : new Date(v * 1000).toLocaleDateString('de-DE')) },
+          ...sorten.map((s) => ({
+            label: s, stroke: SORTEN_FARBEN[s] || '#555', width: 2, spanGaps: true,
+            points: { show: true, size: 5, fill: SORTEN_FARBEN[s] || '#555' },
+            value: (u, v) => (v == null ? '–' : `${fmtNum(v, stellen)} ${einheit}`),
+          })),
+        ],
+        axes: [{}, { values: (u, vals) => vals.map((v) => fmtNum(v, stellen === 3 ? 2 : 1)), size: 55 }],
+        scales: { x: { time: true } },
+        cursor: { sync: { key: 'vt-sorten' } },
+        hooks: { setScale: [zoomSync(andererKey)] },
+      }, data);
+    }
+
+    async function renderCharts() {
+      if (!currentVehicleId) return;
+      try {
+        await ensureUplot();
+      } catch (e) {
+        $('vt-chart-km').innerHTML = '<p class="muted">Diagramm-Bibliothek konnte nicht geladen werden.</p>';
+        return;
+      }
+      if (!chartCache || chartVehicleId !== currentVehicleId) {
+        chartVehicleId = currentVehicleId;
+        chartCache = await fetch(`${BASE}/api/vehicles/${currentVehicleId}/charts`).then((r) => r.json());
+      }
+      renderKmChart();
+      renderSortenChart('verbrauch', $('vt-chart-verbrauch'), chartCache.verbrauch, 'l/100 km', 2, 'preis');
+      renderSortenChart('preis', $('vt-chart-preis'), chartCache.preis, '€/l', 3, 'verbrauch');
+    }
+
+    content.addEventListener('click', (ev) => {
+      const gran = ev.target.closest('[data-km-gran]');
+      if (!gran) return;
+      kmGranularitaet = gran.dataset.kmGran;
+      document.querySelectorAll('[data-km-gran]').forEach((b) => b.classList.toggle('active', b === gran));
+      if (chartCache) renderKmChart();
+    });
+
+    // Breite mitziehen, wenn sich das Fenster oder die Karte (ein/aus) aendert
+    new ResizeObserver(() => {
+      Object.entries(charts).forEach(([key, chart]) => {
+        const el = $(`vt-chart-${key}`);
+        if (el && el.clientWidth && Math.abs(chart.width - el.clientWidth) > 4) {
+          chart.setSize({ width: el.clientWidth, height: 260 });
+        }
+      });
+    }).observe(document.querySelector('#vehicle-tracker-root .vt-main'));
+
     // --- Laden & Rendern -----------------------------------------------------
 
     async function loadVehicles(selectId) {
@@ -1317,6 +1499,8 @@
       renderLogbook(logbook);
       renderTrips(trips);
       renderCosts(costs);
+      chartCache = null;
+      if (!document.querySelector('[data-panel="diagramme"]').hidden) renderCharts();
     }
 
     // --- Farbliche Einordnung im Tankbuch ------------------------------------

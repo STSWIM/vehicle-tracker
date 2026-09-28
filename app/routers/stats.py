@@ -26,6 +26,7 @@ from app.consumption import verbrauch_nach_kraftstoff
 from app.db import get_db
 from app.models import Kostenkategorie, Kraftstoffart, Vehicle
 from app.schemas import VehicleStats
+from app.charts import chart_data
 from app.cost_allocation import anteil, vorausbezahlt
 from app.validation import pruefe_tankluecke
 
@@ -152,3 +153,14 @@ def compute_vehicle_stats(
         hinweise=hinweise,
         vorausbezahlt=round(vorausbezahlt_summe, 2),
     )
+
+
+@router.get("/{vehicle_id}/charts")
+def get_vehicle_charts(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Daten fuer die Diagramme (km je Tag/Monat/Jahr, Verbrauch, Spritpreis)."""
+    vehicle = get_accessible_vehicle(db, vehicle_id, user)
+    return chart_data(vehicle)
